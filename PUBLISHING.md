@@ -31,7 +31,7 @@ The module manifest (`GcePSSession.psd1`) has been updated with:
 - ✅ `ReleaseNotes` - Initial release notes
 - ✅ `Tags` - Enhanced tags for better discoverability
 
-**Note**: Update the `ProjectUri` if your repository URL is different from `https://github.com/mkellerman/GcePSSession`
+**Note**: Update the `ProjectUri` if your repository URL is different from `https://github.com/rwood/GcePSSession`
 
 ### Step 2: Verify Module Structure
 

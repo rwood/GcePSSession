@@ -11,7 +11,6 @@ GcePSSession is a PowerShell module that enables secure PowerShell remoting to G
 - **Secure Remote Access**: Connect to GCE Windows VMs using IAP tunnels without exposing SSH ports publicly
 - **PowerShell Remoting**: Full PowerShell remoting support via SSH transport (PowerShell 6+)
 - **Session Management**: Easy creation and cleanup of remoting sessions with automatic tunnel management
-- **Command Execution**: Execute PowerShell commands and scripts on remote GCE VMs
 - **Windows SSH Setup**: Automated installation and configuration of SSH server on Windows VMs
 - **Credential Support**: Flexible authentication options including SSH keys and credentials
 
@@ -352,7 +351,11 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Version History
 
-- **1.0.0** (2025-11-06): Initial release
+- **1.0.1** (2025-01-XX): Bug fixes and improvements
+  - Removed Invoke-GceCommandAs function (use New-GcePSSession with Invoke-Command instead)
+  - Updated copyright and author information
+  - Fixed module manifest metadata
+- **1.0.0** (2025-01-XX): Initial release
 
 ---
 

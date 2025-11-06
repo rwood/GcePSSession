@@ -106,9 +106,9 @@ When updating the module:
 
 ## Important Notes
 
-1. **ProjectUri**: Currently set to `https://github.com/mkellerman/GcePSSession` - Update if your repository URL is different!
+1. **ProjectUri**: Currently set to `https://github.com/rwood/GcePSSession` - Update if your repository URL is different!
 
-2. **LicenseUri**: Currently set to `https://github.com/mkellerman/GcePSSession/blob/main/LICENSE.md` - Ensure this URL is correct for your repository.
+2. **LicenseUri**: Currently set to `https://github.com/rwood/GcePSSession/blob/main/LICENSE.md` - Ensure this URL is correct for your repository.
 
 3. **First Time Publishing**: The module name must be unique. If "GcePSSession" is taken, you'll need to choose a different name.
 

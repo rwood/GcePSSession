@@ -143,26 +143,6 @@ $session = New-GcePSSession `
     -ShowTunnelWindow
 ```
 
-### Executing Commands
-
-#### Using Invoke-GceCommandAs (One-Liner)
-
-```powershell
-# Execute a script block
-Invoke-GceCommandAs `
-    -Project "my-project" `
-    -Zone "us-central1-a" `
-    -InstanceName "my-vm" `
-    -ScriptBlock { Get-Process | Select-Object -First 5 }
-
-# Execute a script file
-Invoke-GceCommandAs `
-    -Project "my-project" `
-    -Zone "us-central1-a" `
-    -InstanceName "my-vm" `
-    -FilePath "C:\Scripts\MyScript.ps1"
-```
-
 #### Using Sessions (Persistent Connection)
 
 ```powershell
@@ -280,24 +260,6 @@ Removes a GCE PSSession and stops its associated IAP tunnel.
 - `WhatIf`: Preview changes
 - `Confirm`: Prompt for confirmation
 
-#### `Invoke-GceCommandAs`
-
-Invokes a PowerShell command on a GCE VM instance using an IAP tunnel.
-
-**Parameters:**
-- `Project` (Mandatory): GCP project ID
-- `Zone` (Mandatory): GCE zone
-- `InstanceName` (Mandatory): VM instance name
-- `ScriptBlock` (Mandatory): PowerShell script block to execute
-- `FilePath`: Path to PowerShell script file
-- `ArgumentList`: Arguments to pass to script block
-- `Credential`: PSCredential for SSH authentication
-- `LocalPort`: Local port for tunnel
-- `RemotePort`: Remote port on VM
-- `GcloudPath`: Path to gcloud CLI
-- `AsJob`: Run command as background job
-- `ThrottleLimit`: Max concurrent connections
-
 #### `Install-GceWindowsSsh`
 
 Installs and configures SSH server on Windows VM in Google Cloud with PowerShell as the default shell.
@@ -363,10 +325,6 @@ Installs and configures SSH server on Windows VM in Google Cloud with PowerShell
 - **"PowerShell 6+ required"**: Install PowerShell 7+ for SSH remoting support
 - **"SSH connection failed"**: Verify SSH server is installed and configured on the VM
 
-## CI/CD Integration
-
-This project includes Azure Pipelines configuration for automated testing and module publishing. See `azure-pipelines.yml` for details.
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -383,23 +341,18 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Author
 
-**rwood**
+**Roger Wood**
 
-## Related Projects
-
-- [Invoke-CommandAs](https://github.com/mkellerman/Invoke-CommandAs) - Execute commands as another user
 
 ## Links
 
-- [Project Repository](https://github.com/mkellerman/Invoke-CommandAs)
+- [Project Repository](https://github.com/rwood/GcePSSession)
 - [Google Cloud IAP Documentation](https://cloud.google.com/iap/docs/using-tcp-forwarding)
 - [PowerShell SSH Remoting](https://docs.microsoft.com/en-us/powershell/scripting/learn/remoting/ssh-remoting-in-powershell-core)
 
 ## Version History
 
-- **1.0.0** (2019-01-01): Initial release
+- **1.0.0** (2025-11-06): Initial release
 
 ---
-
-**Note**: This module requires PowerShell 6.0+ for SSH remoting support. For Windows PowerShell 5.1, you can use `Invoke-GceCommandAs` which uses a different approach, but `New-GcePSSession` requires PowerShell Core.
 

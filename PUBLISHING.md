@@ -42,7 +42,6 @@ GcePSSession/
 ├── GcePSSession.psm1          # Root module file
 ├── Public/                     # Public functions
 │   ├── Install-GceWindowsSsh.ps1
-│   ├── Invoke-GceCommandAs.ps1
 │   ├── New-GcePSSession.ps1
 │   └── Remove-GcePSSession.ps1
 └── Private/                    # Private functions

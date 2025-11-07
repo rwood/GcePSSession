@@ -164,25 +164,20 @@ function New-GceSshTunnel {
             } else {
                 # Hidden window - properly quote the file path in arguments
                 $TunnelProcessInfo.FileName = 'powershell.exe'
-                # For -File parameter, we need to quote the path if it contains spaces
-                # When building command line arguments, paths with spaces need to be quoted
-                # and any quotes inside need to be escaped by doubling them
-                $quotedGcloudPath = $GcloudExecutable
-                if ($GcloudExecutable -match '\s' -or $GcloudExecutable -match '"') {
-                    $quotedGcloudPath = $GcloudExecutable -replace '"', '""'  # Escape quotes by doubling
-                    $quotedGcloudPath = "`"$quotedGcloudPath`""  # Wrap in quotes
-                }
+                # Build arguments array - don't quote here, we'll quote when building the string
                 $TunnelArgsArray = @(
                     '-NoProfile',
                     '-NonInteractive',
                     '-ExecutionPolicy', 'Bypass',
-                    '-File', $quotedGcloudPath
+                    '-File', $GcloudExecutable
                 ) + $TunnelArgs
                 # Build arguments string, ensuring each argument with spaces is properly quoted
+                # For Windows command line, arguments with spaces need to be wrapped in quotes
+                # and internal quotes need to be escaped by doubling them
                 $argStrings = $TunnelArgsArray | ForEach-Object {
                     if ($_ -match '\s' -or $_ -match '"') {
-                        $escaped = $_ -replace '"', '""'
-                        "`"$escaped`""
+                        $escaped = $_ -replace '"', '""'  # Escape quotes by doubling
+                        "`"$escaped`""  # Wrap in quotes
                     } else {
                         $_
                     }

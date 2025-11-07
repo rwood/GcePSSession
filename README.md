@@ -364,6 +364,9 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Version History
 
+- **1.0.3** (2025-01-XX): Bug fixes
+  - Fixed handling of gcloud paths with spaces in directory names
+  - Improved path quoting for PowerShell script execution
 - **1.0.2** (2025-01-XX): Refactoring and improvements
   - Moved Install-GceWindowsSsh to standalone script (no longer part of module)
   - Script can now be downloaded and run directly on Windows VMs

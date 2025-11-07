@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.4'
+ModuleVersion = '1.0.5'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -108,6 +108,14 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.5 - Bug fixes
+
+Changes:
+- Fixed SSH config file permissions for OpenSSH on Windows
+- Added automatic permission correction for .ssh directory and config file
+- Sets proper owner and ACL to prevent "Bad permissions" errors
+- Disables inheritance to meet OpenSSH strict permission requirements
+
 Version 1.0.4 - Bug fixes and improvements
 
 Changes:

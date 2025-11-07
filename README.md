@@ -364,6 +364,10 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Version History
 
+- **1.0.5** (2025-01-XX): Bug fixes
+  - Fixed SSH config file permissions for OpenSSH on Windows
+  - Added automatic permission correction for .ssh directory and config file
+  - Sets proper owner and ACL to prevent "Bad permissions" errors
 - **1.0.4** (2025-01-XX): Bug fixes and improvements
   - Fixed gcloud path quoting for paths with spaces in directory names
   - Improved command-line argument quoting for both -File and -Command execution

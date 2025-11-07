@@ -364,6 +364,10 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Version History
 
+- **1.0.2** (2025-01-XX): Refactoring and improvements
+  - Moved Install-GceWindowsSsh to standalone script (no longer part of module)
+  - Script can now be downloaded and run directly on Windows VMs
+  - Updated documentation and build scripts
 - **1.0.1** (2025-01-XX): Bug fixes and improvements
   - Removed Invoke-GceCommandAs function (use New-GcePSSession with Invoke-Command instead)
   - Updated copyright and author information

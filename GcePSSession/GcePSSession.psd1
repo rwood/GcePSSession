@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.1'
+ModuleVersion = '1.0.2'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -108,6 +108,13 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.2 - Refactoring and improvements
+
+Changes:
+- Moved Install-GceWindowsSsh to standalone script (no longer part of module)
+- Script can now be downloaded and run directly on Windows VMs
+- Updated documentation and build scripts
+
 Version 1.0.1 - Bug fixes and improvements
 
 Changes:

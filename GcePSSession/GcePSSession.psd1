@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.5'
+ModuleVersion = '1.0.6'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -108,6 +108,13 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.6 - Bug fixes
+
+Changes:
+- Fixed SSH permissions function to use SecurityIdentifier object directly
+- Resolved "Some or all identity references could not be translated" error
+- Improved access rule removal to avoid modification during iteration
+
 Version 1.0.5 - Bug fixes
 
 Changes:

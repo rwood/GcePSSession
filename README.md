@@ -364,6 +364,10 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Version History
 
+- **1.0.6** (2025-01-XX): Bug fixes
+  - Fixed SSH permissions function to use SecurityIdentifier object directly
+  - Resolved "Some or all identity references could not be translated" error
+  - Improved access rule removal to avoid modification during iteration
 - **1.0.5** (2025-01-XX): Bug fixes
   - Fixed SSH config file permissions for OpenSSH on Windows
   - Added automatic permission correction for .ssh directory and config file

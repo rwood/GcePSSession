@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.6'
+ModuleVersion = '1.0.7'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -108,6 +108,14 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.7 - Bug fixes
+
+Changes:
+- Fixed double-quoting issue in gcloud path handling for -File parameter
+- Removed double-quoting of paths in arguments array
+- Paths are now only quoted when building the final arguments string
+- Prevents "Illegal characters in path" errors when paths contain spaces
+
 Version 1.0.6 - Bug fixes
 
 Changes:

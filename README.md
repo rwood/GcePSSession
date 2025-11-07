@@ -364,6 +364,10 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Version History
 
+- **1.0.7** (2025-01-XX): Bug fixes
+  - Fixed double-quoting issue in gcloud path handling for -File parameter
+  - Removed double-quoting of paths in arguments array
+  - Prevents "Illegal characters in path" errors when paths contain spaces
 - **1.0.6** (2025-01-XX): Bug fixes
   - Fixed SSH permissions function to use SecurityIdentifier object directly
   - Resolved "Some or all identity references could not be translated" error

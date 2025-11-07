@@ -144,6 +144,28 @@ function New-GcePSSession {
     try {
         Write-Verbose "$(Get-Date): [GcePSSession]: Starting IAP tunnel setup"
 
+        # Load default values from GcePSSession.json if parameters are not provided
+        $configFilePath = Join-Path $env:USERPROFILE ".GcePSSession.json"
+        if (Test-Path $configFilePath) {
+            try {
+                $config = Get-Content -Path $configFilePath -Raw | ConvertFrom-Json
+                Write-Verbose "$(Get-Date): [GcePSSession]: Loaded configuration from $configFilePath"
+                
+                # Use config values only if parameters were not provided
+                if (-not $PSBoundParameters.ContainsKey('KeyFilePath') -and $config.KeyFilePath) {
+                    $KeyFilePath = $config.KeyFilePath
+                    Write-Verbose "$(Get-Date): [GcePSSession]: Using KeyFilePath from config: $KeyFilePath"
+                }
+                
+                if (-not $PSBoundParameters.ContainsKey('UserName') -and $config.UserName) {
+                    $UserName = $config.UserName
+                    Write-Verbose "$(Get-Date): [GcePSSession]: Using UserName from config: $UserName"
+                }
+            } catch {
+                Write-Warning "Failed to load configuration from $configFilePath`: $_"
+            }
+        }
+
         # Verify PowerShell version (need 6+ for SSH remoting)
         $PSVersion = $PSVersionTable.PSVersion.Major
         if ($PSVersion -lt 6) {

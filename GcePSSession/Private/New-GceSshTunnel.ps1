@@ -149,23 +149,32 @@ function New-GceSshTunnel {
                     $TunnelProcessInfo.FileName = 'powershell.exe'
                 }
                 # Wrap in try-catch to keep window open on error
+                # Properly escape and quote the path for PowerShell command string
                 $escapedGcloudPath = $GcloudExecutable -replace '"', '`"'
-                $escapedArgs = ($TunnelArgs -join ' ') -replace '"', '`"'
-                $commandScript = 'try { & "' + $escapedGcloudPath + '" ' + $escapedArgs + ' } catch { Write-Host "Error: $_" -ForegroundColor Red; Read-Host "Press Enter to close this window" }'
+                if ($escapedGcloudPath -match '\s') {
+                    $escapedGcloudPath = "`"$escapedGcloudPath`""
+                }
+                $escapedArgs = ($TunnelArgs | ForEach-Object { 
+                    if ($_ -match '\s') { "'$_'" } else { $_ }
+                }) -join ' '
+                $commandScript = 'try { & ' + $escapedGcloudPath + ' ' + $escapedArgs + ' } catch { Write-Host "Error: $_" -ForegroundColor Red; Read-Host "Press Enter to close this window" }'
                 $TunnelProcessInfo.Arguments = "-NoExit -ExecutionPolicy Bypass -Command $commandScript"
             } else {
-                # Hidden window
+                # Hidden window - properly quote the file path in arguments
                 $TunnelProcessInfo.FileName = 'powershell.exe'
-                $TunnelArgs = @(
+                $quotedGcloudPath = if ($GcloudExecutable -match '\s') { "`"$GcloudExecutable`"" } else { $GcloudExecutable }
+                $TunnelArgsArray = @(
                     '-NoProfile',
                     '-NonInteractive',
                     '-ExecutionPolicy', 'Bypass',
-                    '-File', $GcloudExecutable
+                    '-File', $quotedGcloudPath
                 ) + $TunnelArgs
-                $TunnelProcessInfo.Arguments = $TunnelArgs -join ' '
+                $TunnelProcessInfo.Arguments = $TunnelArgsArray -join ' '
             }
         } else {
             # Execute as regular executable
+            # ProcessStartInfo.FileName should be the path without quotes
+            # The system will handle paths with spaces automatically
             $TunnelProcessInfo.FileName = $GcloudExecutable
             $TunnelProcessInfo.Arguments = $TunnelArgs -join ' '
         }

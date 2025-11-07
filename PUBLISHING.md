@@ -41,13 +41,14 @@ GcePSSession/
 ├── GcePSSession.psd1          # Module manifest
 ├── GcePSSession.psm1          # Root module file
 ├── Public/                     # Public functions
-│   ├── Install-GceWindowsSsh.ps1
 │   ├── New-GcePSSession.ps1
 │   └── Remove-GcePSSession.ps1
 └── Private/                    # Private functions
     ├── New-GceSshTunnel.ps1
     └── Stop-GceSshTunnel.ps1
 ```
+
+**Note:** `Install-GceWindowsSsh.ps1` is now a standalone script in the root directory and is not part of the module.
 
 ### Step 3: Test Module Locally
 

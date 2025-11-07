@@ -22,7 +22,7 @@ GcePSSession is a PowerShell module that enables secure PowerShell remoting to G
 - **PowerShell 6.0+** (required for `New-GcePSSession` - SSH remoting support)
 - **Google Cloud SDK** (gcloud CLI) installed and configured
 - **GCP IAP Permissions**: Your account must have appropriate IAP permissions for target VM instances
-- **Windows VM**: Target VM must have SSH server installed and configured (use `Install-GceWindowsSsh` for setup)
+- **Windows VM**: Target VM must have SSH server installed and configured (use `Install-GceWindowsSsh.ps1` script for setup)
 
 ### Google Cloud Setup
 
@@ -81,17 +81,21 @@ Remove-GcePSSession -Session $session
 
 ### Setting Up SSH on Windows VMs
 
-Before you can connect to a Windows VM, you need to install and configure SSH:
+Before you can connect to a Windows VM, you need to install and configure SSH. Download and run the `Install-GceWindowsSsh.ps1` script on the Windows VM:
 
 ```powershell
-# On the Windows VM (requires Administrator privileges)
-Install-GceWindowsSsh
+# Download the script (or copy it to the VM)
+# Then run it on the Windows VM (requires Administrator privileges)
+.\Install-GceWindowsSsh.ps1
 
 # Or specify a custom PowerShell path
-Install-GceWindowsSsh -PowerShellPath "C:\Program Files\PowerShell\8\pwsh.exe"
+.\Install-GceWindowsSsh.ps1 -PowerShellPath "C:\Program Files\PowerShell\8\pwsh.exe"
+
+# Skip package installation if packages are already installed
+.\Install-GceWindowsSsh.ps1 -SkipInstallCheck
 ```
 
-This function:
+This script:
 - Installs Google Compute Engine Windows components
 - Installs Google Compute Engine SSH server
 - Configures SSH to use PowerShell as the default shell
@@ -259,9 +263,18 @@ Removes a GCE PSSession and stops its associated IAP tunnel.
 - `WhatIf`: Preview changes
 - `Confirm`: Prompt for confirmation
 
-#### `Install-GceWindowsSsh`
+### Standalone Scripts
 
-Installs and configures SSH server on Windows VM in Google Cloud with PowerShell as the default shell.
+#### `Install-GceWindowsSsh.ps1`
+
+A standalone script that installs and configures SSH server on Windows VM in Google Cloud with PowerShell as the default shell. This script can be downloaded and run directly on Windows VMs without requiring the module to be installed.
+
+**Usage:**
+```powershell
+.\Install-GceWindowsSsh.ps1
+.\Install-GceWindowsSsh.ps1 -PowerShellPath "C:\Program Files\PowerShell\8\pwsh.exe"
+.\Install-GceWindowsSsh.ps1 -SkipInstallCheck
+```
 
 **Parameters:**
 - `PowerShellPath`: Path to PowerShell 7+ executable (default: "C:\Program Files\PowerShell\7\pwsh.exe")

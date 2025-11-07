@@ -73,7 +73,6 @@ try {
 Write-Host "[3/6] Verifying required files..." -ForegroundColor Yellow
 $requiredFiles = @(
     "$ModuleName.psm1",
-    "Public\Install-GceWindowsSsh.ps1",
     "Public\New-GcePSSession.ps1",
     "Public\Remove-GcePSSession.ps1",
     "Private\New-GceSshTunnel.ps1",

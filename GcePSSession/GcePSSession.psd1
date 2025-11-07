@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.3'
+ModuleVersion = '1.0.4'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -108,6 +108,15 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.4 - Bug fixes and improvements
+
+Changes:
+- Fixed gcloud path quoting for paths with spaces in directory names
+- Improved command-line argument quoting for both -File and -Command execution
+- Enhanced module loading to track successfully loaded functions
+- Added verification that functions exist before exporting
+- Updated module description to note PowerShell 6.0+ requirement
+
 Version 1.0.3 - Bug fixes
 
 Changes:

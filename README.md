@@ -364,6 +364,11 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Version History
 
+- **1.0.4** (2025-01-XX): Bug fixes and improvements
+  - Fixed gcloud path quoting for paths with spaces in directory names
+  - Improved command-line argument quoting for both -File and -Command execution
+  - Enhanced module loading to track successfully loaded functions
+  - Added verification that functions exist before exporting
 - **1.0.3** (2025-01-XX): Bug fixes
   - Fixed handling of gcloud paths with spaces in directory names
   - Improved path quoting for PowerShell script execution

@@ -187,8 +187,7 @@ function New-GcePSSession {
             try {
                 # Get current user's identity
                 $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-                $userSid = $currentUser.User.Value
-                $userAccount = New-Object System.Security.Principal.SecurityIdentifier($userSid)
+                $userAccount = $currentUser.User
                 
                 # Get the file's ACL
                 $acl = Get-Acl -Path $FilePath -ErrorAction Stop
@@ -202,17 +201,19 @@ function New-GcePSSession {
                 
                 # Remove all existing access rules and disable inheritance
                 $acl.SetAccessRuleProtection($true, $false)  # Disable inheritance, don't copy inherited rules
-                $acl.Access | ForEach-Object { 
+                $existingRules = $acl.Access | ForEach-Object { $_ }
+                foreach ($rule in $existingRules) {
                     try {
-                        $acl.RemoveAccessRule($_) | Out-Null
+                        $acl.RemoveAccessRule($rule) | Out-Null
                     } catch {
                         # Ignore errors removing rules
                     }
                 }
                 
                 # Add full control for current user only
+                # Use the user account directly (SecurityIdentifier object)
                 $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-                    $userSid,
+                    $userAccount,
                     "FullControl",
                     "Allow"
                 )

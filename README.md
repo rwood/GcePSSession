@@ -364,6 +364,12 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Version History
 
+- **1.0.9** (2025-01-XX): New features
+  - Added Set-GcePSSession function to manage configuration file
+  - Set-GcePSSession allows users to set default KeyFilePath and UserName values
+  - Configuration file is automatically created as hidden if it doesn't exist
+  - Only specified parameters are updated, preserving existing values
+  - Improves user experience by providing a convenient way to configure defaults
 - **1.0.8** (2025-01-XX): New features
   - Added support for JSON config file fallback for KeyFilePath and UserName parameters
   - New-GcePSSession now reads from $env:USERPROFILE\.GcePSSession.json if parameters are not provided

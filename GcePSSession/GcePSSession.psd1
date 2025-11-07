@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.8'
+ModuleVersion = '1.0.9'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -108,6 +108,15 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.9 - New features
+
+Changes:
+- Added Set-GcePSSession function to manage configuration file
+- Set-GcePSSession allows users to set default KeyFilePath and UserName values
+- Configuration file is automatically created as hidden if it doesn't exist
+- Only specified parameters are updated, preserving existing values
+- Improves user experience by providing a convenient way to configure defaults
+
 Version 1.0.8 - New features
 
 Changes:

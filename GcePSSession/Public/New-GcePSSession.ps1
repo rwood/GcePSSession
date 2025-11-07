@@ -180,6 +180,59 @@ function New-GcePSSession {
             New-Item -ItemType Directory -Path $sshConfigDir -Force | Out-Null
         }
 
+        # Function to fix SSH file permissions (required by OpenSSH on Windows)
+        function Set-SshFilePermissions {
+            param([string]$FilePath)
+            
+            try {
+                # Get current user's identity
+                $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+                $userSid = $currentUser.User.Value
+                $userAccount = New-Object System.Security.Principal.SecurityIdentifier($userSid)
+                
+                # Get the file's ACL
+                $acl = Get-Acl -Path $FilePath -ErrorAction Stop
+                
+                # Set the owner to current user (if not already)
+                try {
+                    $acl.SetOwner($userAccount)
+                } catch {
+                    Write-Verbose "$(Get-Date): [GcePSSession]: Could not set owner (may require elevation): $_"
+                }
+                
+                # Remove all existing access rules and disable inheritance
+                $acl.SetAccessRuleProtection($true, $false)  # Disable inheritance, don't copy inherited rules
+                $acl.Access | ForEach-Object { 
+                    try {
+                        $acl.RemoveAccessRule($_) | Out-Null
+                    } catch {
+                        # Ignore errors removing rules
+                    }
+                }
+                
+                # Add full control for current user only
+                $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                    $userSid,
+                    "FullControl",
+                    "Allow"
+                )
+                $acl.AddAccessRule($accessRule)
+                
+                # Set the ACL
+                Set-Acl -Path $FilePath -AclObject $acl -ErrorAction Stop
+                Write-Verbose "$(Get-Date): [GcePSSession]: Fixed permissions on $FilePath"
+            } catch {
+                Write-Warning "Failed to set permissions on $FilePath`: $_"
+            }
+        }
+
+        # Fix permissions on .ssh directory if needed
+        try {
+            Set-SshFilePermissions -FilePath $sshConfigDir
+        } catch {
+            Write-Verbose "$(Get-Date): [GcePSSession]: Could not fix permissions on .ssh directory: $_"
+        }
+
         # Create a specific Host entry for this port to ensure it's matched
         # PowerShell SSH remoting uses [localhost]:port format
         $portSpecificHost = "[localhost]:$($TunnelInfo.LocalPort)"
@@ -205,6 +258,8 @@ Host $portSpecificHost
             if ($existingConfig -notmatch "Host\s+($portSpecificHost|localhost)") {
                 Add-Content -Path $sshConfigPath -Value "`n$configEntry"
                 Write-Verbose "$(Get-Date): [GcePSSession]: Added SSH config entry for localhost and $portSpecificHost"
+                # Fix permissions after modifying the file
+                Set-SshFilePermissions -FilePath $sshConfigPath
             } elseif ($existingConfig -notmatch 'UserKnownHostsFile\s+NUL') {
                 # Update existing entry if it doesn't have NUL
                 Write-Verbose "$(Get-Date): [GcePSSession]: Updating SSH config entry for localhost"
@@ -226,11 +281,16 @@ Host $portSpecificHost
                 }
                 $newLines += $configEntry
                 $newLines | Set-Content $sshConfigPath -Encoding UTF8
+                # Fix permissions after modifying the file
+                Set-SshFilePermissions -FilePath $sshConfigPath
             }
         } else {
             Set-Content -Path $sshConfigPath -Value $configEntry
             Write-Verbose "$(Get-Date): [GcePSSession]: Created SSH config file with localhost entry"
         }
+
+        # Fix permissions on SSH config file (required by OpenSSH on Windows)
+        Set-SshFilePermissions -FilePath $sshConfigPath
 
         # Determine username for SSH
         if ($Credential) {

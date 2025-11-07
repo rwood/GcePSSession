@@ -150,26 +150,44 @@ function New-GceSshTunnel {
                 }
                 # Wrap in try-catch to keep window open on error
                 # Properly escape and quote the path for PowerShell command string
-                $escapedGcloudPath = $GcloudExecutable -replace '"', '`"'
-                if ($escapedGcloudPath -match '\s') {
-                    $escapedGcloudPath = "`"$escapedGcloudPath`""
-                }
+                # Use single quotes for the path in PowerShell command string to avoid escaping issues
+                $escapedGcloudPath = $GcloudExecutable -replace "'", "''"  # Escape single quotes by doubling them
+                $escapedGcloudPath = "'$escapedGcloudPath'"  # Wrap in single quotes
                 $escapedArgs = ($TunnelArgs | ForEach-Object { 
-                    if ($_ -match '\s') { "'$_'" } else { $_ }
+                    $arg = $_ -replace "'", "''"  # Escape single quotes
+                    "'$arg'"  # Wrap each arg in single quotes
                 }) -join ' '
-                $commandScript = 'try { & ' + $escapedGcloudPath + ' ' + $escapedArgs + ' } catch { Write-Host "Error: $_" -ForegroundColor Red; Read-Host "Press Enter to close this window" }'
-                $TunnelProcessInfo.Arguments = "-NoExit -ExecutionPolicy Bypass -Command $commandScript"
+                $commandScript = "try { & $escapedGcloudPath $escapedArgs } catch { Write-Host 'Error: ' + `$_.Exception.Message -ForegroundColor Red; Read-Host 'Press Enter to close this window' }"
+                # Escape the command script for the command line argument
+                $commandScriptEscaped = $commandScript -replace '"', '`"'
+                $TunnelProcessInfo.Arguments = "-NoExit -ExecutionPolicy Bypass -Command `"$commandScriptEscaped`""
             } else {
                 # Hidden window - properly quote the file path in arguments
                 $TunnelProcessInfo.FileName = 'powershell.exe'
-                $quotedGcloudPath = if ($GcloudExecutable -match '\s') { "`"$GcloudExecutable`"" } else { $GcloudExecutable }
+                # For -File parameter, we need to quote the path if it contains spaces
+                # When building command line arguments, paths with spaces need to be quoted
+                # and any quotes inside need to be escaped by doubling them
+                $quotedGcloudPath = $GcloudExecutable
+                if ($GcloudExecutable -match '\s' -or $GcloudExecutable -match '"') {
+                    $quotedGcloudPath = $GcloudExecutable -replace '"', '""'  # Escape quotes by doubling
+                    $quotedGcloudPath = "`"$quotedGcloudPath`""  # Wrap in quotes
+                }
                 $TunnelArgsArray = @(
                     '-NoProfile',
                     '-NonInteractive',
                     '-ExecutionPolicy', 'Bypass',
                     '-File', $quotedGcloudPath
                 ) + $TunnelArgs
-                $TunnelProcessInfo.Arguments = $TunnelArgsArray -join ' '
+                # Build arguments string, ensuring each argument with spaces is properly quoted
+                $argStrings = $TunnelArgsArray | ForEach-Object {
+                    if ($_ -match '\s' -or $_ -match '"') {
+                        $escaped = $_ -replace '"', '""'
+                        "`"$escaped`""
+                    } else {
+                        $_
+                    }
+                }
+                $TunnelProcessInfo.Arguments = $argStrings -join ' '
             }
         } else {
             # Execute as regular executable

@@ -30,7 +30,7 @@ CompanyName = 'Roger Wood'
 Copyright = '(c) 2025 Roger Wood. All rights reserved.'
 
 # Description of the functionality provided by this module
-Description = 'PowerShell remoting sessions for Google Cloud Engine (GCE) VM instances using IAP Tunnel.'
+Description = 'PowerShell remoting sessions for Google Cloud Engine (GCE) VM instances using IAP Tunnel. Note: New-GcePSSession requires PowerShell 6.0+ for SSH remoting support.'
 
 # Minimum version of the Windows PowerShell engine required by this module
 PowerShellVersion = '3.0'

@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.7'
+ModuleVersion = '1.0.8'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -108,6 +108,14 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.8 - New features
+
+Changes:
+- Added support for JSON config file fallback for KeyFilePath and UserName parameters
+- New-GcePSSession now reads from $env:USERPROFILE\.GcePSSession.json if parameters are not provided
+- Config file values are only used when parameters are not explicitly specified
+- Improves usability by allowing default credentials to be configured per user
+
 Version 1.0.7 - Bug fixes
 
 Changes:

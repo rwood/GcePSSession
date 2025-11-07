@@ -364,6 +364,11 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Version History
 
+- **1.0.8** (2025-01-XX): New features
+  - Added support for JSON config file fallback for KeyFilePath and UserName parameters
+  - New-GcePSSession now reads from $env:USERPROFILE\.GcePSSession.json if parameters are not provided
+  - Config file values are only used when parameters are not explicitly specified
+  - Improves usability by allowing default credentials to be configured per user
 - **1.0.7** (2025-01-XX): Bug fixes
   - Fixed double-quoting issue in gcloud path handling for -File parameter
   - Removed double-quoting of paths in arguments array

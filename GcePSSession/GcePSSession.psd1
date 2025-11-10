@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.9'
+ModuleVersion = '1.0.10'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -108,6 +108,16 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.10 - New features
+
+Changes:
+- Added Initialize-GcePSSession.ps1 initialization script
+- Script checks for PowerShell Core 7.5+ and offers MSI installation if needed
+- Automatically creates SSH key pair and configuration file
+- Interactive setup wizard for first-time users
+- Supports non-interactive mode with parameters
+- No dependency on Chocolatey - uses official MSI installer
+
 Version 1.0.9 - New features
 
 Changes:

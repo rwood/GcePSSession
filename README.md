@@ -364,6 +364,13 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Version History
 
+- **1.0.10** (2025-01-XX): New features
+  - Added Initialize-GcePSSession.ps1 initialization script
+  - Script checks for PowerShell Core 7.5+ and offers MSI installation if needed
+  - Automatically creates SSH key pair and configuration file
+  - Interactive setup wizard for first-time users
+  - Supports non-interactive mode with parameters
+  - No dependency on Chocolatey - uses official MSI installer
 - **1.0.9** (2025-01-XX): New features
   - Added Set-GcePSSession function to manage configuration file
   - Set-GcePSSession allows users to set default KeyFilePath and UserName values

@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.10'
+ModuleVersion = '1.0.11'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -108,6 +108,15 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.11 - Bug fixes and improvements
+
+Changes:
+- Changed tunnel ID to use Python process PID (the actual tunnel process spawned by gcloud)
+- Added logic to find Python child process spawned by gcloud/PowerShell wrapper
+- Falls back to PowerShell process PID if Python process not found
+- Renamed TunnelReadyTimeout parameter to ReadyTimeout to avoid parameter name conflict with -Tunnel
+- Fixed parameter binding issue where -Tunnel was matching TunnelReadyTimeout
+
 Version 1.0.10 - New features
 
 Changes:

@@ -14,6 +14,10 @@ function New-GcePSSession {
         Identity-Aware Proxy (IAP) tunnel. The function establishes an IAP tunnel in the
         background and creates a PSSession via SSH through the tunnel.
         
+        If a GceSshTunnel object is provided via -Tunnel, it will be reused. Otherwise, the
+        function will search for existing active tunnels matching the Project, Zone, and
+        InstanceName before creating a new tunnel.
+        
         The tunnel process is attached to the returned session object. When you remove the
         session using Remove-PSSession, you should also stop the tunnel process by calling
         Remove-GcePSSession (which handles cleanup automatically) or by accessing the TunnelProcess property on the session.
@@ -22,17 +26,22 @@ function New-GcePSSession {
         The user must have appropriate IAP permissions for the target VM instance.
         Requires PowerShell 6+ for SSH remoting support.
     
+    .PARAMETER Tunnel
+    
+        Optional GceSshTunnel object to reuse. If provided, Project, Zone, and InstanceName
+        parameters are optional and will be extracted from the tunnel object.
+    
     .PARAMETER Project
     
-        The GCP project ID that contains the VM instance.
+        The GCP project ID that contains the VM instance. Required if Tunnel is not provided.
     
     .PARAMETER Zone
     
-        The GCE zone where the VM instance is located.
+        The GCE zone where the VM instance is located. Required if Tunnel is not provided.
     
     .PARAMETER InstanceName
     
-        The name of the GCE VM instance.
+        The name of the GCE VM instance. Required if Tunnel is not provided.
     
     .PARAMETER Credential
     
@@ -86,6 +95,13 @@ function New-GcePSSession {
         $session = New-GcePSSession -Project "my-project" -Zone "us-central1-a" -InstanceName "my-vm" -ShowTunnelWindow
         # Tunnel process will be visible in a separate window for debugging
     
+    .EXAMPLE
+    
+        # Reuse an existing tunnel
+        $tunnel = Get-GceSshTunnel -InstanceName "my-vm" | Select-Object -First 1
+        $session = New-GcePSSession -Tunnel $tunnel
+        # Reuses the existing tunnel instead of creating a new one
+    
     .NOTES
     
         The tunnel process continues running in the background. Use Remove-GcePSSession
@@ -96,15 +112,18 @@ function New-GcePSSession {
 
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false, ValueFromPipeline=$false)]
+        [GceSshTunnel]$Tunnel,
+        
+        [Parameter(Mandatory=$false)]
         [ValidateNotNullOrEmpty()]
         [string]$Project,
         
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [ValidateNotNullOrEmpty()]
         [string]$Zone,
         
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [ValidateNotNullOrEmpty()]
         [Alias('Instance')]
         [string]$InstanceName,
@@ -138,11 +157,50 @@ function New-GcePSSession {
     )
 
     $ErrorActionPreference = 'Stop'
+    $TunnelObject = $null
     $TunnelInfo = $null
     $Session = $null
+    $existingTunnels = $null
+    $tunnelWasReused = $false
 
     try {
         Write-Verbose "$(Get-Date): [GcePSSession]: Starting IAP tunnel setup"
+
+        # Handle Tunnel parameter - extract Project, Zone, InstanceName if provided
+        if ($Tunnel) {
+            Write-Verbose "$(Get-Date): [GcePSSession]: Using provided tunnel (ID: $($Tunnel.Id))"
+            if (-not $Project) { $Project = $Tunnel.Project }
+            if (-not $Zone) { $Zone = $Tunnel.Zone }
+            if (-not $InstanceName) { $InstanceName = $Tunnel.InstanceName }
+            $TunnelObject = $Tunnel
+            $tunnelWasReused = $true
+        } else {
+            # Validate required parameters if Tunnel not provided
+            if (-not $Project) {
+                throw "Project parameter is required when Tunnel is not provided."
+            }
+            if (-not $Zone) {
+                throw "Zone parameter is required when Tunnel is not provided."
+            }
+            if (-not $InstanceName) {
+                throw "InstanceName parameter is required when Tunnel is not provided."
+            }
+            
+            # Try to find existing active tunnel matching Project, Zone, InstanceName
+            Write-Verbose "$(Get-Date): [GcePSSession]: Searching for existing tunnel to $InstanceName in project $Project, zone $Zone"
+            $existingTunnels = Get-GceSshTunnel -Project $Project -Zone $Zone -InstanceName $InstanceName -ErrorAction SilentlyContinue
+            $activeTunnel = $existingTunnels | Where-Object { $_.GetStatus() -eq 'Active' } | Select-Object -First 1
+            
+            if ($activeTunnel) {
+                Write-Verbose "$(Get-Date): [GcePSSession]: Found existing active tunnel (ID: $($activeTunnel.Id)), reusing it"
+                $TunnelObject = $activeTunnel
+                $tunnelWasReused = $true
+            } else {
+                Write-Verbose "$(Get-Date): [GcePSSession]: No existing active tunnel found, creating new tunnel"
+                $TunnelObject = $null
+                $tunnelWasReused = $false
+            }
+        }
 
         # Load default values from GcePSSession.json if parameters are not provided
         $configFilePath = Join-Path $env:USERPROFILE ".GcePSSession.json"
@@ -172,26 +230,52 @@ function New-GcePSSession {
             throw "New-GcePSSession requires PowerShell 6 or higher for SSH remoting support. Current version: $PSVersion"
         }
 
-        # Create IAP tunnel
-        $TunnelParams = @{
-            Project = $Project
-            Zone = $Zone
-            InstanceName = $InstanceName
-            LocalPort = $LocalPort
-            RemotePort = $RemotePort
-            GcloudPath = $GcloudPath
-            TunnelReadyTimeout = $TunnelReadyTimeout
+        # Create new tunnel only if we don't have one to reuse
+        if (-not $TunnelObject) {
+            Write-Verbose "$(Get-Date): [GcePSSession]: Creating new IAP tunnel"
+            # Create IAP tunnel using the new tunnel management function
+            $TunnelParams = @{
+                Project = $Project
+                Zone = $Zone
+                InstanceName = $InstanceName
+                LocalPort = $LocalPort
+                RemotePort = $RemotePort
+                GcloudPath = $GcloudPath
+                TunnelReadyTimeout = $TunnelReadyTimeout
+            }
+            
+            if ($ShowTunnelWindow) {
+                $TunnelParams['ShowTunnelWindow'] = $true
+            }
+            
+            if ($PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent) {
+                $TunnelParams['Verbose'] = $true
+            }
+            
+            $TunnelObject = New-GceSshTunnel @TunnelParams
+        } else {
+            Write-Verbose "$(Get-Date): [GcePSSession]: Reusing existing tunnel (ID: $($TunnelObject.Id))"
+            # Verify tunnel is still active
+            $tunnelStatus = $TunnelObject.GetStatus()
+            if ($tunnelStatus -ne 'Active') {
+                throw "Provided tunnel is not active (Status: $tunnelStatus). Cannot create PSSession with inactive tunnel."
+            }
+            
+            # Warn if LocalPort was specified but doesn't match existing tunnel
+            if ($LocalPort -ne 0 -and $LocalPort -ne $TunnelObject.LocalPort) {
+                Write-Warning "LocalPort parameter ($LocalPort) was specified but existing tunnel uses port $($TunnelObject.LocalPort). Using existing tunnel's port."
+            }
         }
         
-        if ($ShowTunnelWindow) {
-            $TunnelParams['ShowTunnelWindow'] = $true
+        # Extract tunnel info for backward compatibility
+        $TunnelInfo = [PSCustomObject]@{
+            TunnelProcess = $TunnelObject.TunnelProcess
+            LocalPort = $TunnelObject.LocalPort
+            RemotePort = $TunnelObject.RemotePort
+            Project = $TunnelObject.Project
+            Zone = $TunnelObject.Zone
+            InstanceName = $TunnelObject.InstanceName
         }
-        
-        if ($PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent) {
-            $TunnelParams['Verbose'] = $true
-        }
-        
-        $TunnelInfo = New-GceSshTunnel @TunnelParams
         
         Write-Verbose "$(Get-Date): [GcePSSession]: Tunnel established, configuring SSH and creating PSSession"
 
@@ -350,13 +434,24 @@ Host $portSpecificHost
         Add-Member -InputObject $Session -MemberType NoteProperty -Name 'Project' -Value $TunnelInfo.Project -Force
         Add-Member -InputObject $Session -MemberType NoteProperty -Name 'Zone' -Value $TunnelInfo.Zone -Force
         Add-Member -InputObject $Session -MemberType NoteProperty -Name 'InstanceName' -Value $TunnelInfo.InstanceName -Force
+        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'TunnelId' -Value $TunnelObject.Id -Force
 
         Write-Verbose "$(Get-Date): [GcePSSession]: PSSession created successfully"
         return $Session
 
     } catch {
         # Cleanup on error
-        if ($TunnelInfo -and $TunnelInfo.TunnelProcess -and -not $TunnelInfo.TunnelProcess.HasExited) {
+        # Only cleanup tunnel if we created it (not if it was provided or reused)
+        if ($TunnelObject -and -not $tunnelWasReused) {
+            Write-Verbose "$(Get-Date): [GcePSSession]: Cleaning up newly created tunnel due to error"
+            try {
+                Remove-GceSshTunnel -Tunnel $TunnelObject -ErrorAction SilentlyContinue
+            } catch {
+                Write-Warning "Failed to cleanup tunnel: $_"
+            }
+        } elseif ($TunnelObject -and $tunnelWasReused) {
+            Write-Verbose "$(Get-Date): [GcePSSession]: Tunnel was reused, not cleaning up on error"
+        } elseif ($TunnelInfo -and $TunnelInfo.TunnelProcess -and -not $TunnelInfo.TunnelProcess.HasExited) {
             Write-Verbose "$(Get-Date): [GcePSSession]: Cleaning up tunnel process due to error"
             $TunnelInfo.TunnelProcess.Kill()
             $TunnelInfo.TunnelProcess.WaitForExit(5000)

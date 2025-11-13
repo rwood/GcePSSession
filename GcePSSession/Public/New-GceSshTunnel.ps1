@@ -6,12 +6,15 @@ function New-GceSshTunnel {
     
     .SYNOPSIS
     
-        Creates an IAP tunnel to a GCE VM instance for SSH access.
+        Creates an IAP tunnel to a GCE VM instance and registers it for management.
     
     .DESCRIPTION
     
-        Creates an Identity-Aware Proxy (IAP) tunnel to a Google Cloud Engine VM instance.
-        This is a private helper function used by New-GcePSSession.
+        Creates an Identity-Aware Proxy (IAP) tunnel to a Google Cloud Engine VM instance
+        and registers it in the module's tunnel registry. The tunnel can be managed using
+        Get-GceSshTunnel and Remove-GceSshTunnel.
+        
+        This function follows the same pattern as New-PSSession for PowerShell sessions.
     
     .PARAMETER Project
     
@@ -45,15 +48,34 @@ function New-GceSshTunnel {
     
         When specified, the IAP tunnel process will run in a visible window.
     
+    .PARAMETER Id
+    
+        Optional tunnel ID (Process ID). If not provided, the tunnel process PID will be used as the ID.
+    
     .OUTPUTS
     
-        PSCustomObject with the following properties:
-        - TunnelProcess: The Process object for the tunnel
-        - LocalPort: The local port used for the tunnel
-        - RemotePort: The remote port
+        GceSshTunnel object with the following properties:
+        - Id: Tunnel ID (Process ID/PID)
+        - GetStatus(): Method that returns tunnel status (Active, Stopped, Error)
+        - InstanceName: The VM instance name
         - Project: The GCP project
         - Zone: The GCE zone
-        - InstanceName: The VM instance name
+        - LocalPort: The local port used for the tunnel
+        - RemotePort: The remote port
+        - TunnelProcess: The Process object for the tunnel
+        - Created: Timestamp when the tunnel was created
+    
+    .EXAMPLE
+    
+        $tunnel = New-GceSshTunnel -Project "my-project" -Zone "us-central1-a" -InstanceName "my-vm"
+        Get-GceSshTunnel
+        Remove-GceSshTunnel -Tunnel $tunnel
+        
+    .EXAMPLE
+    
+        Remove-GceSshTunnel -Id 12345
+        
+        Removes a tunnel by Process ID.
     
     #>
 
@@ -86,16 +108,20 @@ function New-GceSshTunnel {
         [int]$TunnelReadyTimeout = 30,
         
         [Parameter(Mandatory=$false)]
-        [switch]$ShowTunnelWindow
+        [switch]$ShowTunnelWindow,
+        
+        [Parameter(Mandatory=$false)]
+        [int]$Id
     )
 
     $ErrorActionPreference = 'Stop'
     $TunnelProcess = $null
+    $TunnelId = $null
     $ErrorOutputEvent = $null
     $ErrorOutputBuilder = $null
 
     try {
-        Write-Verbose "$(Get-Date): [GceSshTunnel]: Starting IAP tunnel setup"
+        Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Creating IAP tunnel to $InstanceName in project $Project, zone $Zone"
 
         # Verify gcloud is available and get the full path
         $gcloudCheck = Get-Command $GcloudPath -ErrorAction SilentlyContinue
@@ -113,10 +139,10 @@ function New-GceSshTunnel {
         $UsePowerShell = $false
         if ($GcloudExecutable -like '*.ps1') {
             $UsePowerShell = $true
-            Write-Verbose "$(Get-Date): [GceSshTunnel]: gcloud is a PowerShell script, will execute via PowerShell"
+            Write-Verbose "$(Get-Date): [New-GceSshTunnel]: gcloud is a PowerShell script, will execute via PowerShell"
         }
 
-        Write-Verbose "$(Get-Date): [GceSshTunnel]: Using gcloud at: $GcloudExecutable"
+        Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Using gcloud at: $GcloudExecutable"
 
         # Find an available local port if not specified
         if ($LocalPort -eq 0) {
@@ -124,11 +150,11 @@ function New-GceSshTunnel {
             $TcpListener.Start()
             $LocalPort = ($TcpListener.LocalEndpoint).Port
             $TcpListener.Stop()
-            Write-Verbose "$(Get-Date): [GceSshTunnel]: Selected local port: $LocalPort"
+            Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Selected local port: $LocalPort"
         }
 
         # Start IAP tunnel in background
-        Write-Verbose "$(Get-Date): [GceSshTunnel]: Starting IAP tunnel to $InstanceName"
+        Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Starting IAP tunnel to $InstanceName"
         $TunnelArgs = @(
             'compute', 'start-iap-tunnel',
             $InstanceName,
@@ -206,6 +232,22 @@ function New-GceSshTunnel {
 
         $TunnelProcess = [System.Diagnostics.Process]::Start($TunnelProcessInfo)
         
+        # Use Process ID as tunnel ID (guaranteed unique)
+        if (-not $Id) {
+            $TunnelId = $TunnelProcess.Id
+        } else {
+            $TunnelId = $Id
+            # Verify the provided ID matches the process ID
+            if ($TunnelId -ne $TunnelProcess.Id) {
+                throw "Provided tunnel ID ($TunnelId) does not match the tunnel process ID ($($TunnelProcess.Id)). Tunnel ID must be the process ID."
+            }
+        }
+        
+        # Check if tunnel with this PID already exists
+        if ($script:GceIapTunnels.ContainsKey($TunnelId)) {
+            Write-Warning "A tunnel with PID $TunnelId already exists. This may indicate a stale entry."
+        }
+        
         # Start reading error stream asynchronously to prevent blocking
         if (-not $ShowTunnelWindow) {
             $ErrorOutputBuilder = New-Object System.Text.StringBuilder
@@ -218,7 +260,7 @@ function New-GceSshTunnel {
         }
 
         # Wait for tunnel to establish by testing port connectivity
-        Write-Verbose "$(Get-Date): [GceSshTunnel]: Waiting for tunnel to be ready on port $LocalPort..."
+        Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Waiting for tunnel to be ready on port $LocalPort..."
         $TunnelReady = $false
         $MaxWaitTime = $TunnelReadyTimeout
         $Attempts = 0
@@ -255,7 +297,7 @@ function New-GceSshTunnel {
                 if ($WaitResult -and $TcpClient.Connected) {
                     $TunnelReady = $true
                     $TcpClient.Close()
-                    Write-Verbose "$(Get-Date): [GceSshTunnel]: Tunnel is ready and accepting connections!"
+                    Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Tunnel is ready and accepting connections!"
                 } else {
                     $TcpClient.Close()
                 }
@@ -294,30 +336,60 @@ function New-GceSshTunnel {
             } catch { }
         }
 
-        Write-Verbose "$(Get-Date): [GceSshTunnel]: Tunnel established successfully"
+        Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Tunnel established successfully"
 
-        # Return tunnel information object
-        return [PSCustomObject]@{
-            TunnelProcess = $TunnelProcess
-            LocalPort = $LocalPort
-            RemotePort = $RemotePort
-            Project = $Project
-            Zone = $Zone
-            InstanceName = $InstanceName
-        }
+        # Create tunnel object using the GceSshTunnel class
+        $TunnelObject = [GceSshTunnel]::new(
+            $TunnelId,
+            $InstanceName,
+            $Project,
+            $Zone,
+            $LocalPort,
+            $RemotePort,
+            $TunnelProcess
+        )
+        
+        # Save tunnel metadata to disk file
+        Save-GceSshTunnelFile -Tunnel $TunnelObject
+        
+        # Register process exit handler to automatically delete file when process exits
+        # Note: Event subscription will automatically clean up when process exits
+        Register-ObjectEvent -InputObject $TunnelProcess -EventName Exited -Action {
+            $tunnelId = $Event.MessageData.TunnelId
+            Remove-GceSshTunnelFile -TunnelId $tunnelId
+            Write-Verbose "Tunnel file automatically removed (process exited): $tunnelId"
+        } -MessageData @{ TunnelId = $TunnelId } -ErrorAction SilentlyContinue | Out-Null
+        
+        # Register tunnel in module storage
+        $script:GceIapTunnels[$TunnelId] = $TunnelObject
+        
+        Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Tunnel created and registered with ID: $TunnelId"
+        
+        return $TunnelObject
 
     } catch {
         # Cleanup on error
         if ($TunnelProcess -and -not $TunnelProcess.HasExited) {
-            Write-Verbose "$(Get-Date): [GceSshTunnel]: Cleaning up tunnel process due to error"
-            $TunnelProcess.Kill()
-            $TunnelProcess.WaitForExit(5000)
+            Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Cleaning up tunnel process due to error"
+            try {
+                $TunnelProcess.Kill()
+                $TunnelProcess.WaitForExit(5000)
+            } catch {
+                Write-Warning "Failed to cleanup tunnel process: $_"
+            }
         }
         if ($ErrorOutputEvent) {
             try {
                 Stop-Job -Job $ErrorOutputEvent -ErrorAction SilentlyContinue
                 Unregister-Event -SourceIdentifier $ErrorOutputEvent.Name -ErrorAction SilentlyContinue
             } catch { }
+        }
+        if ($TunnelId) {
+            # Remove tunnel file if it was created
+            Remove-GceSshTunnelFile -TunnelId $TunnelId
+            if ($script:GceIapTunnels.ContainsKey($TunnelId)) {
+                $script:GceIapTunnels.Remove($TunnelId)
+            }
         }
         throw
     }

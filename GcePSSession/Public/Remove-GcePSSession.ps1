@@ -74,12 +74,32 @@ function Remove-GcePSSession {
             
             if ($PSCmdlet.ShouldProcess($SessionName, "Remove PSSession and stop IAP tunnel")) {
                 try {
-                    # First, stop the tunnel process if it exists
-                    if ($SessionItem.TunnelProcess) {
-                        Write-Verbose "Stopping SSH tunnel for session: $SessionName"
-                        Stop-GceSshTunnel -Session $SessionItem -ErrorAction SilentlyContinue
+                    # First, remove the tunnel using the new tunnel management if TunnelId exists
+                    if ($SessionItem.TunnelId) {
+                        Write-Verbose "Removing IAP tunnel for session: $SessionName (TunnelId: $($SessionItem.TunnelId))"
+                        $tunnel = Get-GceSshTunnel -Id $SessionItem.TunnelId -ErrorAction SilentlyContinue
+                        if ($tunnel) {
+                            Remove-GceSshTunnel -Tunnel $tunnel -Force:$Force -ErrorAction SilentlyContinue
+                        } else {
+                            Write-Verbose "Tunnel with ID $($SessionItem.TunnelId) not found in registry. It may have already been removed."
+                        }
+                    } elseif ($SessionItem.TunnelProcess) {
+                        # Fallback to old method for backward compatibility
+                        Write-Verbose "Stopping SSH tunnel for session: $SessionName (legacy method)"
+                        $TunnelProcess = $SessionItem.TunnelProcess
+                        if (-not $TunnelProcess.HasExited) {
+                            try {
+                                $TunnelProcess.Kill()
+                                $TunnelProcess.WaitForExit(5000)
+                                if (-not $TunnelProcess.HasExited) {
+                                    Write-Warning "Tunnel process did not exit cleanly. PID: $($TunnelProcess.Id)"
+                                }
+                            } catch {
+                                Write-Warning "Error stopping tunnel process: $_"
+                            }
+                        }
                     } else {
-                        Write-Verbose "Session $SessionName does not have a TunnelProcess property. It may not have been created with New-GcePSSession."
+                        Write-Verbose "Session $SessionName does not have a TunnelId or TunnelProcess property. It may not have been created with New-GcePSSession."
                     }
                     
                     # Remove the PSSession

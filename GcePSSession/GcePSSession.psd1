@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.12'
+ModuleVersion = '1.0.13'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -108,6 +108,18 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.13 - Refactoring and improvements
+
+Changes:
+- Moved SSH configuration logic from New-GcePSSession to New-GceSshTunnel
+- SSH config is now set up when tunnel is created, ensuring it's ready for all sessions
+- Added SSHKeepAliveInterval parameter to New-GceSshTunnel (default: 60 seconds)
+- Removed TunnelInfo PSCustomObject, use GceSshTunnel object properties directly
+- Added OwnsTunnel property to PSSession to track tunnel ownership
+- Remove-GcePSSession now only removes tunnels owned by the session
+- Sessions that reuse existing tunnels will not close them when removed
+- Improved separation of concerns: tunnel creation handles all tunnel infrastructure
+
 Version 1.0.12 - New features
 
 Changes:

@@ -78,6 +78,19 @@ function New-GcePSSession {
         When specified, the IAP tunnel process will run in a visible window. Useful for debugging
         tunnel connection issues. By default, the tunnel runs hidden.
     
+    .PARAMETER IdleTimeout
+    
+        Maximum time in seconds that the PSSession can remain idle before being automatically closed.
+        Defaults to 0 (unlimited). Set to a positive value (e.g., 86400 for 24 hours) to enable
+        automatic cleanup of idle sessions.
+    
+    .PARAMETER SSHKeepAliveInterval
+    
+        Interval in seconds between SSH keepalive packets sent to prevent connection timeouts.
+        Defaults to 60 seconds. The SSH client will send keepalive packets at this interval,
+        and will disconnect after 3 missed responses (approximately 3 minutes).
+        Valid range is 1-3600 seconds.
+    
     .EXAMPLE
     
         $session = New-GcePSSession -Project "my-project" -Zone "us-central1-a" -InstanceName "my-vm"
@@ -101,6 +114,12 @@ function New-GcePSSession {
         $tunnel = Get-GceSshTunnel -InstanceName "my-vm" | Select-Object -First 1
         $session = New-GcePSSession -Tunnel $tunnel
         # Reuses the existing tunnel instead of creating a new one
+    
+    .EXAMPLE
+    
+        # Create a session with keepalive settings to prevent timeouts
+        $session = New-GcePSSession -Project "my-project" -Zone "us-central1-a" -InstanceName "my-vm" -IdleTimeout 86400 -SSHKeepAliveInterval 30
+        # Session will timeout after 24 hours of inactivity, with SSH keepalive every 30 seconds
     
     .NOTES
     
@@ -153,7 +172,14 @@ function New-GcePSSession {
         [int]$ReadyTimeout = 30,
         
         [Parameter(Mandatory=$false)]
-        [switch]$ShowTunnelWindow
+        [switch]$ShowTunnelWindow,
+        
+        [Parameter(Mandatory=$false)]
+        [int]$IdleTimeout = 0,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateRange(1, 3600)]
+        [int]$SSHKeepAliveInterval = 60
     )
 
     $ErrorActionPreference = 'Stop'
@@ -345,31 +371,50 @@ function New-GcePSSession {
         $portSpecificHost = "[localhost]:$($TunnelInfo.LocalPort)"
         
         # Add or update SSH config entry for localhost with port-specific pattern
+        # Include keepalive settings to prevent connection timeouts
         $configEntry = @"
 Host localhost
     StrictHostKeyChecking no
     UserKnownHostsFile NUL
     CheckHostIP no
     LogLevel ERROR
+    ServerAliveInterval $SSHKeepAliveInterval
+    ServerAliveCountMax 3
 Host $portSpecificHost
     StrictHostKeyChecking no
     UserKnownHostsFile NUL
     CheckHostIP no
     LogLevel ERROR
+    ServerAliveInterval $SSHKeepAliveInterval
+    ServerAliveCountMax 3
 "@
 
         # Check if config already has entries
         if (Test-Path $sshConfigPath) {
             $existingConfig = Get-Content $sshConfigPath -Raw
             # Check if we need to add or update
+            # Update if entries exist but are missing keepalive settings or other required settings
+            $needsUpdate = $false
+            if ($existingConfig -match "Host\s+($portSpecificHost|localhost)") {
+                # Check if keepalive settings are missing
+                if ($existingConfig -notmatch 'ServerAliveInterval') {
+                    $needsUpdate = $true
+                    Write-Verbose "$(Get-Date): [GcePSSession]: SSH config missing keepalive settings, updating"
+                } elseif ($existingConfig -notmatch 'UserKnownHostsFile\s+NUL') {
+                    $needsUpdate = $true
+                    Write-Verbose "$(Get-Date): [GcePSSession]: SSH config missing required settings, updating"
+                }
+            }
+            
             if ($existingConfig -notmatch "Host\s+($portSpecificHost|localhost)") {
+                # No entries exist, add them
                 Add-Content -Path $sshConfigPath -Value "`n$configEntry"
                 Write-Verbose "$(Get-Date): [GcePSSession]: Added SSH config entry for localhost and $portSpecificHost"
                 # Fix permissions after modifying the file
                 Set-SshFilePermissions -FilePath $sshConfigPath
-            } elseif ($existingConfig -notmatch 'UserKnownHostsFile\s+NUL') {
-                # Update existing entry if it doesn't have NUL
-                Write-Verbose "$(Get-Date): [GcePSSession]: Updating SSH config entry for localhost"
+            } elseif ($needsUpdate) {
+                # Update existing entry - remove old localhost entries and add new ones with keepalive
+                Write-Verbose "$(Get-Date): [GcePSSession]: Updating SSH config entry for localhost with keepalive settings"
                 # Remove old localhost entries and add new ones
                 $lines = Get-Content $sshConfigPath
                 $newLines = @()
@@ -390,10 +435,12 @@ Host $portSpecificHost
                 $newLines | Set-Content $sshConfigPath -Encoding UTF8
                 # Fix permissions after modifying the file
                 Set-SshFilePermissions -FilePath $sshConfigPath
+            } else {
+                Write-Verbose "$(Get-Date): [GcePSSession]: SSH config already has required entries with keepalive settings"
             }
         } else {
             Set-Content -Path $sshConfigPath -Value $configEntry
-            Write-Verbose "$(Get-Date): [GcePSSession]: Created SSH config file with localhost entry"
+            Write-Verbose "$(Get-Date): [GcePSSession]: Created SSH config file with localhost entry and keepalive settings"
         }
 
         # Fix permissions on SSH config file (required by OpenSSH on Windows)
@@ -423,6 +470,11 @@ Host $portSpecificHost
 
         if ($Credential) {
             $SessionParams['Credential'] = $Credential
+        }
+
+        if ($IdleTimeout -gt 0) {
+            $SessionParams['IdleTimeout'] = $IdleTimeout
+            Write-Verbose "$(Get-Date): [GcePSSession]: Setting PSSession IdleTimeout to $IdleTimeout seconds"
         }
 
         $Session = New-PSSession @SessionParams -ErrorAction Stop

@@ -69,7 +69,7 @@ function New-GcePSSession {
     
         Path to gcloud CLI executable. Defaults to 'gcloud'.
     
-    .PARAMETER TunnelReadyTimeout
+    .PARAMETER ReadyTimeout
     
         Maximum time in seconds to wait for the tunnel to become ready. Defaults to 30 seconds.
     
@@ -112,7 +112,7 @@ function New-GcePSSession {
 
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$false, ValueFromPipeline=$false)]
+        [Parameter(Mandatory=$false, ValueFromPipeline=$false, Position=0)]
         [GceSshTunnel]$Tunnel,
         
         [Parameter(Mandatory=$false)]
@@ -150,7 +150,7 @@ function New-GcePSSession {
         [string]$GcloudPath = 'gcloud',
         
         [Parameter(Mandatory=$false)]
-        [int]$TunnelReadyTimeout = 30,
+        [int]$ReadyTimeout = 30,
         
         [Parameter(Mandatory=$false)]
         [switch]$ShowTunnelWindow
@@ -241,7 +241,7 @@ function New-GcePSSession {
                 LocalPort = $LocalPort
                 RemotePort = $RemotePort
                 GcloudPath = $GcloudPath
-                TunnelReadyTimeout = $TunnelReadyTimeout
+                TunnelReadyTimeout = $ReadyTimeout
             }
             
             if ($ShowTunnelWindow) {

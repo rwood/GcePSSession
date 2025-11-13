@@ -232,22 +232,6 @@ function New-GceSshTunnel {
 
         $TunnelProcess = [System.Diagnostics.Process]::Start($TunnelProcessInfo)
         
-        # Use Process ID as tunnel ID (guaranteed unique)
-        if (-not $Id) {
-            $TunnelId = $TunnelProcess.Id
-        } else {
-            $TunnelId = $Id
-            # Verify the provided ID matches the process ID
-            if ($TunnelId -ne $TunnelProcess.Id) {
-                throw "Provided tunnel ID ($TunnelId) does not match the tunnel process ID ($($TunnelProcess.Id)). Tunnel ID must be the process ID."
-            }
-        }
-        
-        # Check if tunnel with this PID already exists
-        if ($script:GceIapTunnels.ContainsKey($TunnelId)) {
-            Write-Warning "A tunnel with PID $TunnelId already exists. This may indicate a stale entry."
-        }
-        
         # Start reading error stream asynchronously to prevent blocking
         if (-not $ShowTunnelWindow) {
             $ErrorOutputBuilder = New-Object System.Text.StringBuilder
@@ -257,6 +241,69 @@ function New-GceSshTunnel {
                 }
             } -MessageData $ErrorOutputBuilder
             $TunnelProcess.BeginErrorReadLine()
+        }
+        
+        # Wait a moment for gcloud to spawn the Python process
+        Start-Sleep -Milliseconds 500
+        
+        # Find the actual Python process that gcloud spawns (the real tunnel process)
+        # gcloud spawns a Python process to handle the tunnel
+        $PythonProcess = $null
+        try {
+            # Get child processes of the PowerShell/gcloud process
+            $childProcesses = Get-CimInstance Win32_Process -Filter "ParentProcessId = $($TunnelProcess.Id)" -ErrorAction SilentlyContinue
+            $PythonProcess = $childProcesses | Where-Object { $_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe' } | Select-Object -First 1
+            
+            if ($PythonProcess) {
+                # Get the actual Process object for the Python process
+                $PythonProcess = Get-Process -Id $PythonProcess.ProcessId -ErrorAction SilentlyContinue
+                Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Found Python tunnel process (PID: $($PythonProcess.Id))"
+            } else {
+                # Fallback: try to find Python processes that might be related
+                # Sometimes the process tree is deeper, so check processes started around the same time
+                $allPythonProcesses = Get-Process python,pythonw -ErrorAction SilentlyContinue | Where-Object {
+                    $_.StartTime -gt (Get-Date).AddSeconds(-5) -and
+                    $_.StartTime -lt (Get-Date).AddSeconds(5)
+                }
+                if ($allPythonProcesses) {
+                    $PythonProcess = $allPythonProcesses | Select-Object -First 1
+                    Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Found Python process started around same time (PID: $($PythonProcess.Id))"
+                }
+            }
+        } catch {
+            Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Could not find Python child process: $_"
+        }
+        
+        # Use Python process PID as tunnel ID if found, otherwise fall back to PowerShell process
+        if ($PythonProcess) {
+            $ActualTunnelProcess = $PythonProcess
+            if (-not $Id) {
+                $TunnelId = $PythonProcess.Id
+            } else {
+                $TunnelId = $Id
+                # Verify the provided ID matches the Python process ID
+                if ($TunnelId -ne $PythonProcess.Id) {
+                    Write-Warning "Provided tunnel ID ($TunnelId) does not match Python process ID ($($PythonProcess.Id)). Using Python process ID."
+                    $TunnelId = $PythonProcess.Id
+                }
+            }
+        } else {
+            # Fallback to PowerShell process if Python process not found
+            $ActualTunnelProcess = $TunnelProcess
+            Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Python process not found, using PowerShell process (PID: $($TunnelProcess.Id))"
+            if (-not $Id) {
+                $TunnelId = $TunnelProcess.Id
+            } else {
+                $TunnelId = $Id
+                if ($TunnelId -ne $TunnelProcess.Id) {
+                    throw "Provided tunnel ID ($TunnelId) does not match the tunnel process ID ($($TunnelProcess.Id)). Tunnel ID must be the process ID."
+                }
+            }
+        }
+        
+        # Check if tunnel with this PID already exists
+        if ($script:GceIapTunnels.ContainsKey($TunnelId)) {
+            Write-Warning "A tunnel with PID $TunnelId already exists. This may indicate a stale entry."
         }
 
         # Wait for tunnel to establish by testing port connectivity
@@ -346,7 +393,7 @@ function New-GceSshTunnel {
             $Zone,
             $LocalPort,
             $RemotePort,
-            $TunnelProcess
+            $ActualTunnelProcess
         )
         
         # Save tunnel metadata to disk file

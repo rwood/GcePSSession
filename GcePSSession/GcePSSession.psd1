@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.11'
+ModuleVersion = '1.0.12'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -108,6 +108,15 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.12 - New features
+
+Changes:
+- Added SSH keepalive settings (ServerAliveInterval and ServerAliveCountMax) to prevent tunnel timeouts
+- Added -IdleTimeout parameter to control PSSession idle timeout (default: unlimited)
+- Added -SSHKeepAliveInterval parameter to configure SSH keepalive interval (default: 60 seconds)
+- SSH config entries now automatically include keepalive settings to prevent connection drops
+- Improved SSH config update logic to ensure keepalive settings are always present
+
 Version 1.0.11 - Bug fixes and improvements
 
 Changes:

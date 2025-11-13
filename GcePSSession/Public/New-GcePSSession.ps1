@@ -18,6 +18,10 @@ function New-GcePSSession {
         function will search for existing active tunnels matching the Project, Zone, and
         InstanceName before creating a new tunnel.
         
+        SSH client configuration (including keepalive settings) is automatically handled by
+        New-GceSshTunnel when the tunnel is created. The SSHKeepAliveInterval parameter
+        controls the keepalive interval used for SSH connections through the tunnel.
+        
         The tunnel process is attached to the returned session object. When you remove the
         session using Remove-PSSession, you should also stop the tunnel process by calling
         Remove-GcePSSession (which handles cleanup automatically) or by accessing the TunnelProcess property on the session.
@@ -89,7 +93,8 @@ function New-GcePSSession {
         Interval in seconds between SSH keepalive packets sent to prevent connection timeouts.
         Defaults to 60 seconds. The SSH client will send keepalive packets at this interval,
         and will disconnect after 3 missed responses (approximately 3 minutes).
-        Valid range is 1-3600 seconds.
+        Valid range is 1-3600 seconds. This value is passed to New-GceSshTunnel when creating
+        a new tunnel, and is used to configure the SSH client settings.
     
     .EXAMPLE
     
@@ -184,7 +189,6 @@ function New-GcePSSession {
 
     $ErrorActionPreference = 'Stop'
     $TunnelObject = $null
-    $TunnelInfo = $null
     $Session = $null
     $existingTunnels = $null
     $tunnelWasReused = $false
@@ -268,6 +272,7 @@ function New-GcePSSession {
                 RemotePort = $RemotePort
                 GcloudPath = $GcloudPath
                 TunnelReadyTimeout = $ReadyTimeout
+                SSHKeepAliveInterval = $SSHKeepAliveInterval
             }
             
             if ($ShowTunnelWindow) {
@@ -293,158 +298,7 @@ function New-GcePSSession {
             }
         }
         
-        # Extract tunnel info for backward compatibility
-        $TunnelInfo = [PSCustomObject]@{
-            TunnelProcess = $TunnelObject.TunnelProcess
-            LocalPort = $TunnelObject.LocalPort
-            RemotePort = $TunnelObject.RemotePort
-            Project = $TunnelObject.Project
-            Zone = $TunnelObject.Zone
-            InstanceName = $TunnelObject.InstanceName
-        }
-        
-        Write-Verbose "$(Get-Date): [GcePSSession]: Tunnel established, configuring SSH and creating PSSession"
-
-        # Configure SSH to skip host key checking for localhost connections
-        $sshConfigPath = "$env:USERPROFILE\.ssh\config"
-        $sshConfigDir = Split-Path $sshConfigPath -Parent
-        if (-not (Test-Path $sshConfigDir)) {
-            New-Item -ItemType Directory -Path $sshConfigDir -Force | Out-Null
-        }
-
-        # Function to fix SSH file permissions (required by OpenSSH on Windows)
-        function Set-SshFilePermissions {
-            param([string]$FilePath)
-            
-            try {
-                # Get current user's identity
-                $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-                $userAccount = $currentUser.User
-                
-                # Get the file's ACL
-                $acl = Get-Acl -Path $FilePath -ErrorAction Stop
-                
-                # Set the owner to current user (if not already)
-                try {
-                    $acl.SetOwner($userAccount)
-                } catch {
-                    Write-Verbose "$(Get-Date): [GcePSSession]: Could not set owner (may require elevation): $_"
-                }
-                
-                # Remove all existing access rules and disable inheritance
-                $acl.SetAccessRuleProtection($true, $false)  # Disable inheritance, don't copy inherited rules
-                $existingRules = $acl.Access | ForEach-Object { $_ }
-                foreach ($rule in $existingRules) {
-                    try {
-                        $acl.RemoveAccessRule($rule) | Out-Null
-                    } catch {
-                        # Ignore errors removing rules
-                    }
-                }
-                
-                # Add full control for current user only
-                # Use the user account directly (SecurityIdentifier object)
-                $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-                    $userAccount,
-                    "FullControl",
-                    "Allow"
-                )
-                $acl.AddAccessRule($accessRule)
-                
-                # Set the ACL
-                Set-Acl -Path $FilePath -AclObject $acl -ErrorAction Stop
-                Write-Verbose "$(Get-Date): [GcePSSession]: Fixed permissions on $FilePath"
-            } catch {
-                Write-Warning "Failed to set permissions on $FilePath`: $_"
-            }
-        }
-
-        # Fix permissions on .ssh directory if needed
-        try {
-            Set-SshFilePermissions -FilePath $sshConfigDir
-        } catch {
-            Write-Verbose "$(Get-Date): [GcePSSession]: Could not fix permissions on .ssh directory: $_"
-        }
-
-        # Create a specific Host entry for this port to ensure it's matched
-        # PowerShell SSH remoting uses [localhost]:port format
-        $portSpecificHost = "[localhost]:$($TunnelInfo.LocalPort)"
-        
-        # Add or update SSH config entry for localhost with port-specific pattern
-        # Include keepalive settings to prevent connection timeouts
-        $configEntry = @"
-Host localhost
-    StrictHostKeyChecking no
-    UserKnownHostsFile NUL
-    CheckHostIP no
-    LogLevel ERROR
-    ServerAliveInterval $SSHKeepAliveInterval
-    ServerAliveCountMax 3
-Host $portSpecificHost
-    StrictHostKeyChecking no
-    UserKnownHostsFile NUL
-    CheckHostIP no
-    LogLevel ERROR
-    ServerAliveInterval $SSHKeepAliveInterval
-    ServerAliveCountMax 3
-"@
-
-        # Check if config already has entries
-        if (Test-Path $sshConfigPath) {
-            $existingConfig = Get-Content $sshConfigPath -Raw
-            # Check if we need to add or update
-            # Update if entries exist but are missing keepalive settings or other required settings
-            $needsUpdate = $false
-            if ($existingConfig -match "Host\s+($portSpecificHost|localhost)") {
-                # Check if keepalive settings are missing
-                if ($existingConfig -notmatch 'ServerAliveInterval') {
-                    $needsUpdate = $true
-                    Write-Verbose "$(Get-Date): [GcePSSession]: SSH config missing keepalive settings, updating"
-                } elseif ($existingConfig -notmatch 'UserKnownHostsFile\s+NUL') {
-                    $needsUpdate = $true
-                    Write-Verbose "$(Get-Date): [GcePSSession]: SSH config missing required settings, updating"
-                }
-            }
-            
-            if ($existingConfig -notmatch "Host\s+($portSpecificHost|localhost)") {
-                # No entries exist, add them
-                Add-Content -Path $sshConfigPath -Value "`n$configEntry"
-                Write-Verbose "$(Get-Date): [GcePSSession]: Added SSH config entry for localhost and $portSpecificHost"
-                # Fix permissions after modifying the file
-                Set-SshFilePermissions -FilePath $sshConfigPath
-            } elseif ($needsUpdate) {
-                # Update existing entry - remove old localhost entries and add new ones with keepalive
-                Write-Verbose "$(Get-Date): [GcePSSession]: Updating SSH config entry for localhost with keepalive settings"
-                # Remove old localhost entries and add new ones
-                $lines = Get-Content $sshConfigPath
-                $newLines = @()
-                $inLocalhostBlock = $false
-                foreach ($line in $lines) {
-                    if ($line -match '^\s*Host\s+(localhost|\[localhost\])') {
-                        $inLocalhostBlock = $true
-                        continue
-                    }
-                    if ($inLocalhostBlock -and $line -match '^\s*Host\s+') {
-                        $inLocalhostBlock = $false
-                    }
-                    if (-not $inLocalhostBlock) {
-                        $newLines += $line
-                    }
-                }
-                $newLines += $configEntry
-                $newLines | Set-Content $sshConfigPath -Encoding UTF8
-                # Fix permissions after modifying the file
-                Set-SshFilePermissions -FilePath $sshConfigPath
-            } else {
-                Write-Verbose "$(Get-Date): [GcePSSession]: SSH config already has required entries with keepalive settings"
-            }
-        } else {
-            Set-Content -Path $sshConfigPath -Value $configEntry
-            Write-Verbose "$(Get-Date): [GcePSSession]: Created SSH config file with localhost entry and keepalive settings"
-        }
-
-        # Fix permissions on SSH config file (required by OpenSSH on Windows)
-        Set-SshFilePermissions -FilePath $sshConfigPath
+        Write-Verbose "$(Get-Date): [GcePSSession]: Tunnel established, creating PSSession"
 
         # Determine username for SSH
         if ($Credential) {
@@ -459,7 +313,7 @@ Host $portSpecificHost
         Write-Verbose "$(Get-Date): [GcePSSession]: Creating PSSession via SSH"
         $SessionParams = @{
             HostName = "localhost"
-            Port = $TunnelInfo.LocalPort
+            Port = $TunnelObject.LocalPort
             UserName = $SSHUserName
             SSHTransport = $true
         }
@@ -480,13 +334,15 @@ Host $portSpecificHost
         $Session = New-PSSession @SessionParams -ErrorAction Stop
 
         # Attach tunnel process information to the session
-        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'TunnelProcess' -Value $TunnelInfo.TunnelProcess -Force
-        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'LocalPort' -Value $TunnelInfo.LocalPort -Force
-        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'RemotePort' -Value $TunnelInfo.RemotePort -Force
-        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'Project' -Value $TunnelInfo.Project -Force
-        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'Zone' -Value $TunnelInfo.Zone -Force
-        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'InstanceName' -Value $TunnelInfo.InstanceName -Force
+        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'TunnelProcess' -Value $TunnelObject.TunnelProcess -Force
+        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'LocalPort' -Value $TunnelObject.LocalPort -Force
+        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'RemotePort' -Value $TunnelObject.RemotePort -Force
+        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'Project' -Value $TunnelObject.Project -Force
+        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'Zone' -Value $TunnelObject.Zone -Force
+        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'InstanceName' -Value $TunnelObject.InstanceName -Force
         Add-Member -InputObject $Session -MemberType NoteProperty -Name 'TunnelId' -Value $TunnelObject.Id -Force
+        # Indicate whether this session owns the tunnel (created it vs reused existing)
+        Add-Member -InputObject $Session -MemberType NoteProperty -Name 'OwnsTunnel' -Value (-not $tunnelWasReused) -Force
 
         Write-Verbose "$(Get-Date): [GcePSSession]: PSSession created successfully"
         return $Session
@@ -503,10 +359,10 @@ Host $portSpecificHost
             }
         } elseif ($TunnelObject -and $tunnelWasReused) {
             Write-Verbose "$(Get-Date): [GcePSSession]: Tunnel was reused, not cleaning up on error"
-        } elseif ($TunnelInfo -and $TunnelInfo.TunnelProcess -and -not $TunnelInfo.TunnelProcess.HasExited) {
+        } elseif ($TunnelObject -and $TunnelObject.TunnelProcess -and -not $TunnelObject.TunnelProcess.HasExited) {
             Write-Verbose "$(Get-Date): [GcePSSession]: Cleaning up tunnel process due to error"
-            $TunnelInfo.TunnelProcess.Kill()
-            $TunnelInfo.TunnelProcess.WaitForExit(5000)
+            $TunnelObject.TunnelProcess.Kill()
+            $TunnelObject.TunnelProcess.WaitForExit(5000)
         }
         if ($Session) {
             Remove-PSSession -Session $Session -ErrorAction SilentlyContinue

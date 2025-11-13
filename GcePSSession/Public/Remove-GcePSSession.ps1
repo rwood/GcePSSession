@@ -11,8 +11,10 @@ function Remove-GcePSSession {
     .DESCRIPTION
     
         Removes a PowerShell remoting session created with New-GcePSSession and
-        automatically stops the associated SSH tunnel process. This is a convenience
-        function that combines Remove-PSSession and tunnel cleanup.
+        automatically stops the associated SSH tunnel process if the session owns the tunnel.
+        Only sessions that created their tunnel (did not reuse an existing one) will have
+        their tunnels removed. This is a convenience function that combines Remove-PSSession
+        and tunnel cleanup.
     
     .PARAMETER Session
     
@@ -74,32 +76,46 @@ function Remove-GcePSSession {
             
             if ($PSCmdlet.ShouldProcess($SessionName, "Remove PSSession and stop IAP tunnel")) {
                 try {
-                    # First, remove the tunnel using the new tunnel management if TunnelId exists
-                    if ($SessionItem.TunnelId) {
-                        Write-Verbose "Removing IAP tunnel for session: $SessionName (TunnelId: $($SessionItem.TunnelId))"
-                        $tunnel = Get-GceSshTunnel -Id $SessionItem.TunnelId -ErrorAction SilentlyContinue
-                        if ($tunnel) {
-                            Remove-GceSshTunnel -Tunnel $tunnel -Force:$Force -ErrorAction SilentlyContinue
-                        } else {
-                            Write-Verbose "Tunnel with ID $($SessionItem.TunnelId) not found in registry. It may have already been removed."
-                        }
-                    } elseif ($SessionItem.TunnelProcess) {
-                        # Fallback to old method for backward compatibility
-                        Write-Verbose "Stopping SSH tunnel for session: $SessionName (legacy method)"
-                        $TunnelProcess = $SessionItem.TunnelProcess
-                        if (-not $TunnelProcess.HasExited) {
-                            try {
-                                $TunnelProcess.Kill()
-                                $TunnelProcess.WaitForExit(5000)
-                                if (-not $TunnelProcess.HasExited) {
-                                    Write-Warning "Tunnel process did not exit cleanly. PID: $($TunnelProcess.Id)"
+                    # Only remove the tunnel if this session owns it (created it)
+                    $shouldRemoveTunnel = $false
+                    if ($SessionItem.PSObject.Properties.Name -contains 'OwnsTunnel') {
+                        $shouldRemoveTunnel = $SessionItem.OwnsTunnel
+                        Write-Verbose "Session $SessionName OwnsTunnel property: $shouldRemoveTunnel"
+                    } else {
+                        # For backward compatibility: if OwnsTunnel property doesn't exist,
+                        # assume the session owns the tunnel if TunnelId or TunnelProcess exists
+                        $shouldRemoveTunnel = ($SessionItem.TunnelId -or $SessionItem.TunnelProcess)
+                        Write-Verbose "Session $SessionName does not have OwnsTunnel property. Assuming ownership based on tunnel properties: $shouldRemoveTunnel"
+                    }
+                    
+                    if ($shouldRemoveTunnel) {
+                        # Remove the tunnel using the new tunnel management if TunnelId exists
+                        if ($SessionItem.TunnelId) {
+                            Write-Verbose "Removing IAP tunnel for session: $SessionName (TunnelId: $($SessionItem.TunnelId))"
+                            $tunnel = Get-GceSshTunnel -Id $SessionItem.TunnelId -ErrorAction SilentlyContinue
+                            if ($tunnel) {
+                                Remove-GceSshTunnel -Tunnel $tunnel -Force:$Force -ErrorAction SilentlyContinue
+                            } else {
+                                Write-Verbose "Tunnel with ID $($SessionItem.TunnelId) not found in registry. It may have already been removed."
+                            }
+                        } elseif ($SessionItem.TunnelProcess) {
+                            # Fallback to old method for backward compatibility
+                            Write-Verbose "Stopping SSH tunnel for session: $SessionName (legacy method)"
+                            $TunnelProcess = $SessionItem.TunnelProcess
+                            if (-not $TunnelProcess.HasExited) {
+                                try {
+                                    $TunnelProcess.Kill()
+                                    $TunnelProcess.WaitForExit(5000)
+                                    if (-not $TunnelProcess.HasExited) {
+                                        Write-Warning "Tunnel process did not exit cleanly. PID: $($TunnelProcess.Id)"
+                                    }
+                                } catch {
+                                    Write-Warning "Error stopping tunnel process: $_"
                                 }
-                            } catch {
-                                Write-Warning "Error stopping tunnel process: $_"
                             }
                         }
                     } else {
-                        Write-Verbose "Session $SessionName does not have a TunnelId or TunnelProcess property. It may not have been created with New-GcePSSession."
+                        Write-Verbose "Session $SessionName does not own the tunnel (reused existing tunnel). Skipping tunnel removal."
                     }
                     
                     # Remove the PSSession

@@ -14,6 +14,11 @@ function New-GceSshTunnel {
         and registers it in the module's tunnel registry. The tunnel can be managed using
         Get-GceSshTunnel and Remove-GceSshTunnel.
         
+        This function automatically configures SSH client settings (SSH config file) to
+        enable proper connection handling and keepalive settings for PowerShell remoting.
+        The SSH configuration is set up when the tunnel is created, ensuring it's ready
+        for use with New-GcePSSession or other SSH-based tools.
+        
         This function follows the same pattern as New-PSSession for PowerShell sessions.
     
     .PARAMETER Project
@@ -51,6 +56,13 @@ function New-GceSshTunnel {
     .PARAMETER Id
     
         Optional tunnel ID (Process ID). If not provided, the tunnel process PID will be used as the ID.
+    
+    .PARAMETER SSHKeepAliveInterval
+    
+        Interval in seconds between SSH keepalive packets sent to prevent connection timeouts.
+        Defaults to 60 seconds. The SSH client will send keepalive packets at this interval,
+        and will disconnect after 3 missed responses (approximately 3 minutes).
+        Valid range is 1-3600 seconds.
     
     .OUTPUTS
     
@@ -111,7 +123,11 @@ function New-GceSshTunnel {
         [switch]$ShowTunnelWindow,
         
         [Parameter(Mandatory=$false)]
-        [int]$Id
+        [int]$Id,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateRange(1, 3600)]
+        [int]$SSHKeepAliveInterval = 60
     )
 
     $ErrorActionPreference = 'Stop'
@@ -384,6 +400,148 @@ function New-GceSshTunnel {
         }
 
         Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Tunnel established successfully"
+
+        # Configure SSH to skip host key checking for localhost connections
+        Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Configuring SSH settings"
+        $sshConfigPath = "$env:USERPROFILE\.ssh\config"
+        $sshConfigDir = Split-Path $sshConfigPath -Parent
+        if (-not (Test-Path $sshConfigDir)) {
+            New-Item -ItemType Directory -Path $sshConfigDir -Force | Out-Null
+        }
+
+        # Function to fix SSH file permissions (required by OpenSSH on Windows)
+        function Set-SshFilePermissions {
+            param([string]$FilePath)
+            
+            try {
+                # Get current user's identity
+                $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+                $userAccount = $currentUser.User
+                
+                # Get the file's ACL
+                $acl = Get-Acl -Path $FilePath -ErrorAction Stop
+                
+                # Set the owner to current user (if not already)
+                try {
+                    $acl.SetOwner($userAccount)
+                } catch {
+                    Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Could not set owner (may require elevation): $_"
+                }
+                
+                # Remove all existing access rules and disable inheritance
+                $acl.SetAccessRuleProtection($true, $false)  # Disable inheritance, don't copy inherited rules
+                $existingRules = $acl.Access | ForEach-Object { $_ }
+                foreach ($rule in $existingRules) {
+                    try {
+                        $acl.RemoveAccessRule($rule) | Out-Null
+                    } catch {
+                        # Ignore errors removing rules
+                    }
+                }
+                
+                # Add full control for current user only
+                # Use the user account directly (SecurityIdentifier object)
+                $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                    $userAccount,
+                    "FullControl",
+                    "Allow"
+                )
+                $acl.AddAccessRule($accessRule)
+                
+                # Set the ACL
+                Set-Acl -Path $FilePath -AclObject $acl -ErrorAction Stop
+                Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Fixed permissions on $FilePath"
+            } catch {
+                Write-Warning "Failed to set permissions on $FilePath`: $_"
+            }
+        }
+
+        # Fix permissions on .ssh directory if needed
+        try {
+            Set-SshFilePermissions -FilePath $sshConfigDir
+        } catch {
+            Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Could not fix permissions on .ssh directory: $_"
+        }
+
+        # Create a specific Host entry for this port to ensure it's matched
+        # PowerShell SSH remoting uses [localhost]:port format
+        $portSpecificHost = "[localhost]:$LocalPort"
+        
+        # Add or update SSH config entry for localhost with port-specific pattern
+        # Include keepalive settings to prevent connection timeouts
+        $configEntry = @"
+Host localhost
+    StrictHostKeyChecking no
+    UserKnownHostsFile NUL
+    CheckHostIP no
+    LogLevel ERROR
+    ServerAliveInterval $SSHKeepAliveInterval
+    ServerAliveCountMax 3
+Host $portSpecificHost
+    StrictHostKeyChecking no
+    UserKnownHostsFile NUL
+    CheckHostIP no
+    LogLevel ERROR
+    ServerAliveInterval $SSHKeepAliveInterval
+    ServerAliveCountMax 3
+"@
+
+        # Check if config already has entries
+        if (Test-Path $sshConfigPath) {
+            $existingConfig = Get-Content $sshConfigPath -Raw
+            # Check if we need to add or update
+            # Update if entries exist but are missing keepalive settings or other required settings
+            $needsUpdate = $false
+            if ($existingConfig -match "Host\s+($portSpecificHost|localhost)") {
+                # Check if keepalive settings are missing
+                if ($existingConfig -notmatch 'ServerAliveInterval') {
+                    $needsUpdate = $true
+                    Write-Verbose "$(Get-Date): [New-GceSshTunnel]: SSH config missing keepalive settings, updating"
+                } elseif ($existingConfig -notmatch 'UserKnownHostsFile\s+NUL') {
+                    $needsUpdate = $true
+                    Write-Verbose "$(Get-Date): [New-GceSshTunnel]: SSH config missing required settings, updating"
+                }
+            }
+            
+            if ($existingConfig -notmatch "Host\s+($portSpecificHost|localhost)") {
+                # No entries exist, add them
+                Add-Content -Path $sshConfigPath -Value "`n$configEntry"
+                Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Added SSH config entry for localhost and $portSpecificHost"
+                # Fix permissions after modifying the file
+                Set-SshFilePermissions -FilePath $sshConfigPath
+            } elseif ($needsUpdate) {
+                # Update existing entry - remove old localhost entries and add new ones with keepalive
+                Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Updating SSH config entry for localhost with keepalive settings"
+                # Remove old localhost entries and add new ones
+                $lines = Get-Content $sshConfigPath
+                $newLines = @()
+                $inLocalhostBlock = $false
+                foreach ($line in $lines) {
+                    if ($line -match '^\s*Host\s+(localhost|\[localhost\])') {
+                        $inLocalhostBlock = $true
+                        continue
+                    }
+                    if ($inLocalhostBlock -and $line -match '^\s*Host\s+') {
+                        $inLocalhostBlock = $false
+                    }
+                    if (-not $inLocalhostBlock) {
+                        $newLines += $line
+                    }
+                }
+                $newLines += $configEntry
+                $newLines | Set-Content $sshConfigPath -Encoding UTF8
+                # Fix permissions after modifying the file
+                Set-SshFilePermissions -FilePath $sshConfigPath
+            } else {
+                Write-Verbose "$(Get-Date): [New-GceSshTunnel]: SSH config already has required entries with keepalive settings"
+            }
+        } else {
+            Set-Content -Path $sshConfigPath -Value $configEntry
+            Write-Verbose "$(Get-Date): [New-GceSshTunnel]: Created SSH config file with localhost entry and keepalive settings"
+        }
+
+        # Fix permissions on SSH config file (required by OpenSSH on Windows)
+        Set-SshFilePermissions -FilePath $sshConfigPath
 
         # Create tunnel object using the GceSshTunnel class
         $TunnelObject = [GceSshTunnel]::new(

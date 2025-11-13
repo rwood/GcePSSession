@@ -1,3 +1,5 @@
+#Requires -Version 7.0
+
 <#
 .SYNOPSIS
     Build script for GcePSSession PowerShell module.
@@ -221,7 +223,7 @@ if ($Configuration -eq 'Production') {
     Write-Host "Next steps:" -ForegroundColor Cyan
     Write-Host "1. Review the module one more time" -ForegroundColor White
     Write-Host "2. Ensure your PowerShell Gallery API key is ready" -ForegroundColor White
-    Write-Host "3. Run: Publish-Module -Path '$ModulePath' -NuGetApiKey <YourApiKey> -Repository PSGallery" -ForegroundColor White
+    Write-Host "3. Run: Publish-Module -Path '$ModulePath' -NuGetApiKey 'YourApiKey' -Repository PSGallery" -ForegroundColor White
 } else {
     Write-Host "✓ Build completed successfully (Development mode)" -ForegroundColor Green
 }

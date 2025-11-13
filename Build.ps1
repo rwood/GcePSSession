@@ -75,8 +75,11 @@ $requiredFiles = @(
     "$ModuleName.psm1",
     "Public\New-GcePSSession.ps1",
     "Public\Remove-GcePSSession.ps1",
-    "Private\New-GceSshTunnel.ps1",
-    "Private\Stop-GceSshTunnel.ps1"
+    "Public\New-GceSshTunnel.ps1",
+    "Public\Get-GceSshTunnel.ps1",
+    "Public\Remove-GceSshTunnel.ps1",
+    "Classes\GceSshTunnel.ps1",
+    "Private\Get-GceSshTunnelDirectory.ps1"
 )
 
 $missingFiles = @()

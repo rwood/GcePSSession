@@ -309,13 +309,29 @@ function New-GcePSSession {
             $SSHUserName = $env:USERNAME
         }
 
+        # Detect remote OS to adjust authentication behavior
+        $remoteOS = "Windows"  # Default assumption
+        if ($KeyFilePath) {
+            $remoteOS = Test-RemoteOS -Port $TunnelObject.LocalPort -KeyFilePath $KeyFilePath -UserName $SSHUserName
+            Write-Verbose "$(Get-Date): [GcePSSession]: Detected remote OS: $remoteOS"
+        }
+
         # Create SSH-based PSSession
         Write-Verbose "$(Get-Date): [GcePSSession]: Creating PSSession via SSH"
         $SessionParams = @{
             HostName = "localhost"
             Port = $TunnelObject.LocalPort
-            UserName = $SSHUserName
             SSHTransport = $true
+        }
+
+        # For Windows, include UserName (supports domain accounts)
+        # For Linux with KeyFilePath, omit UserName (SSH derives it from key)
+        if ($remoteOS -eq "Linux" -and $KeyFilePath) {
+            Write-Verbose "$(Get-Date): [GcePSSession]: Linux target with KeyFilePath - omitting UserName (SSH will derive from key)"
+        } else {
+            # Linux without KeyFilePath - still need username
+            $SessionParams['UserName'] = $SSHUserName
+            Write-Verbose "$(Get-Date): [GcePSSession]: Linux target without KeyFilePath - using UserName: $SSHUserName"
         }
 
         if ($KeyFilePath) {

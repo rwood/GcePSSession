@@ -12,7 +12,7 @@
 RootModule = 'GcePSSession.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.14'
+ModuleVersion = '1.0.15'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -69,7 +69,7 @@ PowerShellVersion = '3.0'
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = @('New-GcePSSession', 'Remove-GcePSSession', 'Set-GcePSSession', 'New-GceSshTunnel', 'Get-GceSshTunnel', 'Remove-GceSshTunnel')
+FunctionsToExport = @('New-GcePSSession', 'Remove-GcePSSession', 'Set-GcePSSession', 'New-GceSshTunnel', 'Get-GceSshTunnel', 'Remove-GceSshTunnel', 'Add-GceSshKey')
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()
@@ -108,6 +108,14 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
+Version 1.0.15 - Windows SSH and Add-GceSshKey
+
+Changes:
+- Added Add-GceSshKey: adds SSH public key to project metadata and optionally creates Windows user via reset-windows-password
+- Install-GceWindowsSsh.ps1 now sets enable-windows-ssh=TRUE in instance metadata (required for guest agent SSH key sync)
+- New-GcePSSession rejects -Credential with clear error; SSH transport requires key-based auth (-KeyFilePath and -UserName)
+- Documentation and troubleshooting for Windows local user SSH without Active Directory
+
 Version 1.0.13 - Refactoring and improvements
 
 Changes:

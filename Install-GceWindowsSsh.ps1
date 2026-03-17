@@ -6,9 +6,10 @@
     This script:
     1. Installs Google Compute Engine Windows components (if not already installed)
     2. Installs Google Compute Engine SSH server (if not already installed)
-    3. Configures SSH to use PowerShell as the default shell
-    4. Configures SSH authentication settings
-    5. Restarts the SSH service
+    3. Sets enable-windows-ssh=TRUE in instance metadata (required for guest agent SSH key sync)
+    4. Configures SSH to use PowerShell as the default shell
+    5. Configures SSH authentication settings
+    6. Restarts the SSH service
     
     Requires Administrator privileges and PowerShell 7+ (pwsh.exe) to be installed.
 
@@ -94,7 +95,7 @@ function Test-PowerShellInstalled {
 }
 
 # Step 1: Check and install Google Compute Engine Windows components
-Write-Host "[1/6] Checking Google Compute Engine Windows components..." -ForegroundColor Yellow
+Write-Host "[1/7] Checking Google Compute Engine Windows components..." -ForegroundColor Yellow
 
 if (-not $SkipInstallCheck) {
     if (-not (Test-GoogetPackageInstalled -PackageName "google-compute-engine-windows")) {
@@ -112,7 +113,7 @@ if (-not $SkipInstallCheck) {
 }
 
 # Step 2: Check and install Google Compute Engine SSH
-Write-Host "[2/6] Checking Google Compute Engine SSH..." -ForegroundColor Yellow
+Write-Host "[2/7] Checking Google Compute Engine SSH..." -ForegroundColor Yellow
 
 if (-not $SkipInstallCheck) {
     if (-not (Test-GoogetPackageInstalled -PackageName "google-compute-engine-ssh")) {
@@ -129,8 +130,34 @@ if (-not $SkipInstallCheck) {
     Write-Host "  Skipping install check (SkipInstallCheck specified)" -ForegroundColor Gray
 }
 
-# Step 3: Verify PowerShell 7+ is installed
-Write-Host "[3/6] Verifying PowerShell 7+ installation..." -ForegroundColor Yellow
+# Step 3: Set enable-windows-ssh=TRUE in instance metadata
+Write-Host "[3/7] Ensuring enable-windows-ssh metadata is set..." -ForegroundColor Yellow
+
+try {
+    $currentValue = gcloud compute instances describe $(hostname) --format="value(metadata.items[key=enable-windows-ssh].value)" --zone=$(
+        Invoke-RestMethod -Headers @{ 'Metadata-Flavor' = 'Google' } -Uri 'http://metadata.google.internal/computeMetadata/v1/instance/zone' |
+        Split-Path -Leaf
+    ) 2>$null
+
+    if ($currentValue -eq 'TRUE') {
+        Write-Host "  ✓ enable-windows-ssh is already TRUE" -ForegroundColor Green
+    } else {
+        gcloud compute instances add-metadata $(hostname) --metadata=enable-windows-ssh=TRUE --zone=$(
+            Invoke-RestMethod -Headers @{ 'Metadata-Flavor' = 'Google' } -Uri 'http://metadata.google.internal/computeMetadata/v1/instance/zone' |
+            Split-Path -Leaf
+        )
+        if ($LASTEXITCODE -ne 0) {
+            throw "gcloud command failed with exit code $LASTEXITCODE"
+        }
+        Write-Host "  ✓ Set enable-windows-ssh=TRUE in instance metadata" -ForegroundColor Green
+    }
+} catch {
+    Write-Warning "Could not set enable-windows-ssh metadata: $_"
+    Write-Host "  You can set it manually: gcloud compute instances add-metadata $(hostname) --metadata=enable-windows-ssh=TRUE --zone=YOUR_ZONE" -ForegroundColor Yellow
+}
+
+# Step 4: Verify PowerShell 7+ is installed
+Write-Host "[4/7] Verifying PowerShell 7+ installation..." -ForegroundColor Yellow
 
 if (-not (Test-PowerShellInstalled -Path $PowerShellPath)) {
     throw "PowerShell 7+ (pwsh.exe) not found at $PowerShellPath or in PATH. Please install PowerShell 7+ first."
@@ -139,8 +166,8 @@ if (-not (Test-PowerShellInstalled -Path $PowerShellPath)) {
 $PowerShellPath = (Get-Command pwsh.exe -ErrorAction Stop).Source
 Write-Host "  ✓ Found PowerShell at: $PowerShellPath" -ForegroundColor Green
 
-# Step 4: Configure SSH DefaultShell registry entry
-Write-Host "[4/6] Configuring SSH DefaultShell registry entry..." -ForegroundColor Yellow
+# Step 5: Configure SSH DefaultShell registry entry
+Write-Host "[5/7] Configuring SSH DefaultShell registry entry..." -ForegroundColor Yellow
 
 $regPath = "HKLM:\SOFTWARE\OpenSSH"
 if (-not (Test-Path $regPath)) {
@@ -160,8 +187,8 @@ try {
     throw "Failed to set DefaultShell registry value: $_"
 }
 
-# Step 5: Configure sshd_config file
-Write-Host "[5/6] Configuring sshd_config..." -ForegroundColor Yellow
+# Step 6: Configure sshd_config file
+Write-Host "[6/7] Configuring sshd_config..." -ForegroundColor Yellow
 
 $sshdConfigPath = "C:\ProgramData\ssh\sshd_config"
 
@@ -270,9 +297,9 @@ foreach ($key in $settingsToAdd.Keys) {
 $newLines | Set-Content $sshdConfigPath -Encoding UTF8
 Write-Host "  ✓ Updated sshd_config" -ForegroundColor Green
 
-# Step 6: Restart SSH service
+# Step 7: Restart SSH service
 Write-Host ""
-Write-Host "[6/6] Restarting SSH service..." -ForegroundColor Yellow
+Write-Host "[7/7] Restarting SSH service..." -ForegroundColor Yellow
 
 try {
     $sshdService = Get-Service sshd -ErrorAction Stop
@@ -303,6 +330,7 @@ Write-Host "=== Configuration Complete ===" -ForegroundColor Green
 Write-Host ""
 Write-Host "Summary:" -ForegroundColor Cyan
 Write-Host "  - SSH server configured with PowerShell as default shell" -ForegroundColor White
+Write-Host "  - enable-windows-ssh: TRUE (instance metadata)" -ForegroundColor White
 Write-Host "  - PasswordAuthentication: Enabled" -ForegroundColor White
 Write-Host "  - PubkeyAuthentication: Enabled" -ForegroundColor White
 Write-Host ""

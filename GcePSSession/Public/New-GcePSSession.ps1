@@ -49,8 +49,9 @@ function New-GcePSSession {
     
     .PARAMETER Credential
     
-        Optional PSCredential for SSH authentication to the VM.
-        If not provided, will use default SSH credentials.
+        Not supported. SSH-based remoting only accepts key authentication (-KeyFilePath and -UserName).
+        If specified, the function throws a clear error. Use key-based auth; for Windows VMs without domain,
+        add your public key to instance metadata so the guest agent creates a local user.
     
     .PARAMETER KeyFilePath
     
@@ -196,6 +197,11 @@ function New-GcePSSession {
     try {
         Write-Verbose "$(Get-Date): [GcePSSession]: Starting IAP tunnel setup"
 
+        # SSH-based PSSession does not support -Credential (password auth); New-PSSession's SSH parameter set only accepts KeyFilePath.
+        if ($Credential) {
+            throw "SSH-based PowerShell remoting does not support -Credential (password authentication). Use -KeyFilePath and -UserName with an SSH private key. For Windows VMs without domain join, add your public key to the instance metadata (enable-windows-ssh=TRUE and google-compute-engine-ssh); the guest agent will create a local user. Example: New-GcePSSession -InstanceName my-vm -Project my-project -Zone my-zone -UserName myuser -KeyFilePath $env:USERPROFILE\.ssh\id_rsa"
+        }
+
         # Handle Tunnel parameter - extract Project, Zone, InstanceName if provided
         if ($Tunnel) {
             Write-Verbose "$(Get-Date): [GcePSSession]: Using provided tunnel (ID: $($Tunnel.Id))"
@@ -336,10 +342,6 @@ function New-GcePSSession {
 
         if ($KeyFilePath) {
             $SessionParams['KeyFilePath'] = $KeyFilePath
-        }
-
-        if ($Credential) {
-            $SessionParams['Credential'] = $Credential
         }
 
         if ($IdleTimeout -gt 0) {
